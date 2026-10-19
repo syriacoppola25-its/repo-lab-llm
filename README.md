@@ -57,7 +57,7 @@ Con il server di LM Studio acceso e `.env` configurato:
 .\.venv\Scripts\python.exe client.py
 ```
 
-Il client chiede una domanda da terminale, la invia a `{LM_BASE_URL}/chat/completions` e stampa il testo della risposta a frammenti, man mano che il modello lo genera (streaming), poi chiede la domanda successiva. Per uscire scrivere `esci` oppure premere `Ctrl+C`. Le righe vuote vengono ignorate. Ogni domanda è una richiesta indipendente: il modello non ricorda le domande precedenti. Se il server dà errore, il messaggio compare e il programma chiede ancora. Non ha interfaccia grafica e non salva nulla su disco.
+Il client chiede una domanda da terminale, la invia a `{LM_BASE_URL}/chat/completions` e stampa il testo della risposta a frammenti, man mano che il modello lo genera (streaming), poi chiede la domanda successiva. Per uscire scrivere `esci` oppure premere `Ctrl+C`. Le righe vuote vengono ignorate. La conversazione resta in memoria durante la sessione: a ogni richiesta viene inviata l'intera cronologia, quindi il modello ricorda le domande e le risposte precedenti (per esempio il nome dell'utente). La cronologia si perde alla chiusura e non viene limitata: in sessioni molto lunghe può superare il contesto del modello e il server risponde con un errore, e in quel caso conviene riavviare il programma. Una richiesta fallita non entra nella cronologia. Se il server dà errore, il messaggio compare e il programma chiede ancora. Non ha interfaccia grafica e non salva nulla su disco.
 
 ## Verifica
 
@@ -75,7 +75,8 @@ Il client chiede una domanda da terminale, la invia a `{LM_BASE_URL}/chat/comple
 
 3. Risposta del modello: eseguire `client.py` come nella sezione Avvio e scrivere una domanda. Deve comparire un testo in italiano, con le lettere accentate corrette, che si compone progressivamente e non tutto insieme. Il testo può risultare troncato perché `max_tokens` è 500: è normale.
 4. Ciclo: premere Invio senza testo (non deve succedere nulla, compare di nuovo la richiesta), poi scrivere `esci` (il programma termina). Rieseguire e premere `Ctrl+C`: deve comparire `Interrotto. Arrivederci.` senza traceback.
-5. Messaggio di errore: fermare il server in LM Studio, rieseguire `client.py` e scrivere una domanda. Deve comparire `Connessione fallita: controllare server, URL e porta.` e il programma deve chiedere ancora una domanda.
+5. Memoria: scrivere `Mi chiamo Anna`, poi `Come mi chiamo?`: il modello deve rispondere con il nome. Uscire con `esci`, rieseguire e rifare la seconda domanda: il modello non deve più conoscere il nome.
+6. Messaggio di errore: fermare il server in LM Studio, rieseguire `client.py` e scrivere una domanda. Deve comparire `Connessione fallita: controllare server, URL e porta.` e il programma deve chiedere ancora una domanda.
 
 ## Diagnosi rapida
 

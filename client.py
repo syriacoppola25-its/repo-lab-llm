@@ -21,6 +21,8 @@ system_message = {
     "role": "system",
     "content": "Sei un assistente tecnico. Rispondi in italiano, in modo chiaro e conciso.",
 }
+# Cronologia in memoria: si perde alla chiusura, non viene salvata su file.
+messages = [system_message]
 
 # --- Risposta progressiva -------------------------------------------------
 def ask(payload):
@@ -52,7 +54,8 @@ def ask(payload):
 
 
 # --- Ciclo domanda-risposta -----------------------------------------------
-# Ogni giro e' indipendente: nuova richiesta, nessuna memoria dei giri precedenti.
+# Ogni giro e' una nuova richiesta che invia l'intera cronologia. Lo scambio
+# entra in messages solo se la richiesta riesce.
 try:
     while True:
         question = input("Domanda (scrivi 'esci' per uscire): ").strip()
@@ -62,9 +65,10 @@ try:
             break
 
         # --- Payload ----------------------------------------------------------
+        user_message = {"role": "user", "content": question}
         payload = {
             "model": model,
-            "messages": [system_message, {"role": "user", "content": question}],
+            "messages": messages + [user_message],
             "temperature": 0.3,
             "max_tokens": 500,
             "reasoning_effort": "none",
@@ -73,12 +77,15 @@ try:
 
         # --- Chiamata ---------------------------------------------------------
         try:
-            ask(payload)
+            answer = ask(payload)
         except requests.exceptions.Timeout:
             print("Attesa scaduta: controllare server, carico e tempi.")
         except requests.exceptions.ConnectionError:
             print("Connessione fallita: controllare server, URL e porta.")
         except requests.exceptions.HTTPError as error:
             print("Errore HTTP:", error.response.status_code, error.response.text)
+        else:
+            if answer:
+                messages.extend([user_message, {"role": "assistant", "content": answer}])
 except (KeyboardInterrupt, EOFError):
     print("\nInterrotto. Arrivederci.")
