@@ -16,35 +16,41 @@ base_url = os.environ["LM_BASE_URL"].rstrip("/")
 model = os.environ["LM_MODEL"]
 
 # --- Messaggi -------------------------------------------------------------
-messages = [
-    {
-        "role": "system",
-        "content": "Sei un assistente tecnico. Rispondi in italiano, in modo chiaro e conciso.",
-    },
-    {
-        "role": "user",
-        "content": "Che differenza c'e' tra addestramento e inferenza in un modello di deep learning?",
-    },
-]
-
-# --- Payload --------------------------------------------------------------
-payload = {
-    "model": model,
-    "messages": messages,
-    "temperature": 0.3,
-    "max_tokens": 500,
-    "reasoning_effort": "none",
-    "stream": False,
+system_message = {
+    "role": "system",
+    "content": "Sei un assistente tecnico. Rispondi in italiano, in modo chiaro e conciso.",
 }
 
-# --- Chiamata -------------------------------------------------------------
+# --- Ciclo domanda-risposta -----------------------------------------------
+# Ogni giro e' indipendente: nuova richiesta, nessuna memoria dei giri precedenti.
 try:
-    response = requests.post(f"{base_url}/chat/completions", json=payload, timeout=120)
-    response.raise_for_status()
-    print(response.json()["choices"][0]["message"]["content"])
-except requests.exceptions.Timeout:
-    print("Attesa scaduta: controllare server, carico e tempi.")
-except requests.exceptions.ConnectionError:
-    print("Connessione fallita: controllare server, URL e porta.")
-except requests.exceptions.HTTPError:
-    print("Errore HTTP:", response.status_code, response.text)
+    while True:
+        question = input("Domanda (scrivi 'esci' per uscire): ").strip()
+        if not question:
+            continue
+        if question.lower() == "esci":
+            break
+
+        # --- Payload ----------------------------------------------------------
+        payload = {
+            "model": model,
+            "messages": [system_message, {"role": "user", "content": question}],
+            "temperature": 0.3,
+            "max_tokens": 500,
+            "reasoning_effort": "none",
+            "stream": False,
+        }
+
+        # --- Chiamata ---------------------------------------------------------
+        try:
+            response = requests.post(f"{base_url}/chat/completions", json=payload, timeout=120)
+            response.raise_for_status()
+            print(response.json()["choices"][0]["message"]["content"])
+        except requests.exceptions.Timeout:
+            print("Attesa scaduta: controllare server, carico e tempi.")
+        except requests.exceptions.ConnectionError:
+            print("Connessione fallita: controllare server, URL e porta.")
+        except requests.exceptions.HTTPError:
+            print("Errore HTTP:", response.status_code, response.text)
+except (KeyboardInterrupt, EOFError):
+    print("\nInterrotto. Arrivederci.")
