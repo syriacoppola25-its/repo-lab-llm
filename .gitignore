@@ -1,0 +1,12 @@
+# Configurazione locale e credenziali
+.env
+
+# Ambiente virtuale
+.venv/
+
+# Log dell'applicazione
+logs/
+
+# Cache di Python e pytest
+__pycache__/
+.pytest_cache/
