@@ -1,8 +1,22 @@
 # Assistente del laboratorio
 
 Progetto del corso «Deep Learning e LLM: costruire chatbot e agenti».
-La cartella del progetto è `repo-lab-llm/`; all'inizio contiene soltanto questo file.
-Struttura, dipendenze e comandi verranno definiti con la specifica e il piano.
+La cartella del progetto è `repo-lab-llm/`.
+
+## Struttura
+- `assistente/`: `config.py` (variabili d'ambiente), `modello.py` (LM Studio, istruzioni di
+  sistema), `strumenti.py` (orologio), `registro.py` (log su file), `grafo.py` (stato, nodi,
+  `instrada`), `terminale.py` (ciclo e cronologia), `__main__.py` (avvio).
+- `tests/`: test senza modello; `test_reale_lmstudio.py` è la prova reale.
+- `Dockerfile`, `docker-compose.yml`; `.env` locale (non versionato) da `.env.example`.
+
+## Comandi
+- Ambiente: `python -m venv .venv`, `.\.venv\Scripts\Activate.ps1`,
+  `python -m pip install -r requirements-dev.txt`.
+- Test senza modello: `python -m pytest -v`.
+- Prova reale: `$env:PROVA_LMSTUDIO = "1"` più `LMSTUDIO_URL`/`LMSTUDIO_MODELLO`, poi
+  `python -m pytest tests/test_reale_lmstudio.py -q`.
+- Avvio: `python -m assistente`; con Docker: `docker compose run --rm assistente`.
 
 ## Obiettivo
 Un'applicazione da terminale in Python che conversa con un modello locale e:
@@ -57,4 +71,3 @@ Un'applicazione da terminale in Python che conversa con un modello locale e:
   comandi verificati.
 - Aggiornare questo file quando cambiano convenzioni stabili (struttura, comandi di test,
   regole di lavoro), non per annotare l'avanzamento.
-- Nella cartella lezione3 c'è un progetto precedente, ignorala.
