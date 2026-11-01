@@ -9,7 +9,16 @@ from assistente.config import Config
 
 def istruzioni_sistema(fuso_predefinito: str) -> str:
     """Istruzioni mandate al modello all'inizio di ogni richiesta."""
-    return "Sei l'assistente del laboratorio. Rispondi sempre in italiano e in modo conciso."
+    return (
+        "Sei l'assistente del laboratorio. Rispondi sempre in italiano e in modo conciso.\n"
+        "Per sapere data o ora usa sempre lo strumento `orologio`: non inventarle e non "
+        "usare orari presenti nei messaggi precedenti.\n"
+        "Se la domanda riguarda una città o un paese, passa a `orologio` il suo fuso orario "
+        "IANA (per esempio Asia/Tokyo per Tokyo).\n"
+        f"Il fuso predefinito è {fuso_predefinito}. Se l'utente non indica un luogo, "
+        "rispondi con data e ora senza scrivere il nome del fuso. Se l'utente indica un "
+        "luogo, scrivi anche il fuso usato."
+    )
 
 
 def crea_modello(config: Config, strumenti: list[BaseTool]) -> Runnable:

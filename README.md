@@ -4,8 +4,8 @@ Chatbot da terminale in Python per il corso «Deep Learning e LLM: costruire cha
 Il flusso della conversazione è un grafo LangGraph scritto a mano.
 
 Stato attuale: l'assistente conversa con un modello servito da LM Studio e ricorda la
-conversazione per la durata della sessione. Lo strumento orologio arriverà nell'incremento
-successivo.
+conversazione per la durata della sessione. Quando serve l'ora chiede lo strumento `orologio`,
+che il programma esegue davvero. L'avvio con Docker Compose arriverà nell'incremento successivo.
 
 ## Preparare l'ambiente (PowerShell)
 
@@ -58,6 +58,32 @@ python -m assistente
 
 La cronologia della conversazione resta in memoria solo finché la sessione è aperta.
 
+## Strumento orologio
+
+Il modello non conosce l'ora: quando gli serve, chiede (tool calling) lo strumento `orologio`,
+che il programma esegue e il cui risultato torna al modello. L'argomento facoltativo
+`fuso_orario` è un nome IANA (per esempio `Asia/Tokyo`); senza argomento si usa
+`FUSO_PREDEFINITO`. Il risultato ha la forma `2026-11-02 04:55:00 Asia/Tokyo (UTC+09:00)`;
+un fuso inesistente produce un messaggio d'errore per il modello, non un crash.
+
+Per ogni domanda lo strumento può essere eseguito al massimo `LIMITE_CHIAMATE_STRUMENTO` volte
+(predefinito 5); oltre, l'assistente risponde
+`Non sono riuscito a completare la risposta (limite di passaggi raggiunto). Riprova o riformula la domanda.`
+
+Esempio di domande: «che ore sono?», «e a Tokyo?».
+
+### File di log
+
+Ogni chiamata allo strumento viene scritta in `logs/assistente.log` (o in `PERCORSO_LOG`), mai
+nel terminale. Per vedere le ultime righe:
+
+```powershell
+Get-Content logsssistente.log -Encoding utf8 -Tail 6
+```
+
+Esempio di riga: `INFO passaggio=1 strumento=orologio argomenti={'fuso_orario': 'Asia/Tokyo'} risultato=...`;
+quando si raggiunge il limite compare una riga `WARNING limite raggiunto: ...`.
+
 ## Diagnosi
 
 - `Variabile d'ambiente LMSTUDIO_URL mancante. Vedi .env.example.`: le variabili non sono
@@ -78,6 +104,18 @@ Non richiedono un modello attivo:
 python -m pytest -v
 ```
 
+La prova reale con LM Studio (`tests/test_reale_lmstudio.py`) viene saltata, a meno di attivarla
+esplicitamente. Con LM Studio avviato e le variabili di «Avvio» impostate:
+
+```powershell
+$env:PROVA_LMSTUDIO = "1"
+python -m pytest tests/test_reale_lmstudio.py -q
+Remove-Item Env:PROVA_LMSTUDIO
+```
+
+La prova chiede «Che ore sono a Tokyo?» al modello vero e controlla che usi lo strumento con
+`Asia/Tokyo`. Il modello non è deterministico: conviene ripeterla più volte.
+
 ## Come è fatto il grafo
 
 LangGraph descrive il programma come un grafo:
@@ -89,9 +127,19 @@ LangGraph descrive il programma come un grafo:
 - **arco**: il collegamento che dice quale nodo viene eseguito dopo. Un **arco condizionale**
   sceglie il nodo successivo in base allo stato.
 
-Il nodo `modello` antepone le istruzioni di sistema ai messaggi che manda al modello, senza
-salvarle nella cronologia. Per ora il grafo è il più semplice possibile:
+Il grafo dell'assistente (`costruisci_grafo` in `assistente/grafo.py`):
 
 ```
-START → modello → END
+START → modello ──fine──────→ END
+          ↑  │ ──limite──→ limite → END
+          │  └─strumenti─→ strumenti
+          └───────────────────┘
 ```
+
+- `modello`: manda al modello le istruzioni di sistema (non salvate nella cronologia) e la
+  conversazione, e aggiunge la risposta;
+- `instrada` (arco condizionale): se la risposta non chiede strumenti → `END`; se li chiede e il
+  limite non è superato → `strumenti`; altrimenti → `limite`;
+- `strumenti`: esegue ogni chiamata richiesta, aggiunge un risultato per ciascuna e torna a
+  `modello`;
+- `limite`: chiude le chiamate rimaste senza esito e risponde con il messaggio di limite.
