@@ -169,6 +169,32 @@ Remove-Item Env:PROVA_LMSTUDIO
 La prova chiede «Che ore sono a Tokyo?» al modello vero e controlla che usi lo strumento con
 `Asia/Tokyo`. Il modello non è deterministico: conviene ripeterla più volte.
 
+## Verifica completa
+
+Ordine delle prove per ricontrollare tutto da zero (PowerShell, nella cartella del progetto):
+
+1. Ambiente pulito e test automatici, senza modello né Docker:
+
+   ```powershell
+   Remove-Item -Recurse -Force .venv
+   python -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+   python -m pip install -r requirements-dev.txt
+   python -m pip check
+   python -m pytest -v
+   ```
+
+   Esito atteso: `No broken requirements found.` e `30 passed, 1 skipped`.
+2. LM Studio: elenco dei modelli (sezione «Configurazione»), prova reale con
+   `PROVA_LMSTUDIO` (sezione «Test automatici», ripetuta più volte) e conversazione con
+   `python -m assistente`: «che ore sono?», «e a Tokyo?», «di che cosa abbiamo parlato?»,
+   confrontando le ore con l'orologio di Windows e il file di log.
+3. Docker: `docker compose build`, i due controlli dell'immagine (sezione «Diagnosi») e
+   `docker compose run --rm assistente` con una domanda sull'ora di Tokyo, poi `esci`.
+
+Comportamento noto del modello `google/gemma-4-e2b`: usa correttamente lo strumento, ma spesso
+nomina il fuso `Europe/Rome` anche quando non serve.
+
 ## Come è fatto il grafo
 
 LangGraph descrive il programma come un grafo:
