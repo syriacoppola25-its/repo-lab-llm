@@ -1,0 +1,15 @@
+# Configurazione locale e credenziali
+.env
+
+# Ambiente virtuale, log, cache
+.venv/
+logs/
+__pycache__/
+.pytest_cache/
+
+# Non servono nell'immagine
+tests/
+docs/
+lezione3/
+.git/
+.superpowers/

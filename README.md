@@ -5,7 +5,7 @@ Il flusso della conversazione è un grafo LangGraph scritto a mano.
 
 Stato attuale: l'assistente conversa con un modello servito da LM Studio e ricorda la
 conversazione per la durata della sessione. Quando serve l'ora chiede lo strumento `orologio`,
-che il programma esegue davvero. L'avvio con Docker Compose arriverà nell'incremento successivo.
+che il programma esegue davvero. Si avvia sia in locale sia con Docker Compose.
 
 ## Preparare l'ambiente (PowerShell)
 
@@ -58,6 +58,41 @@ python -m assistente
 
 La cronologia della conversazione resta in memoria solo finché la sessione è aperta.
 
+## Avvio con Docker Compose
+
+LM Studio resta sull'host (non va in un container); nel container gira solo l'assistente.
+Serve Docker Desktop avviato.
+
+1. Crea `.env` copiando `.env.example` e sostituisci i segnaposto con i valori reali (il file
+   non va in Git):
+
+   ```
+   LMSTUDIO_URL=http://localhost:1234/v1
+   LMSTUDIO_MODELLO=google/gemma-4-e2b
+   ```
+
+2. Controlla la configurazione e costruisci l'immagine:
+
+   ```powershell
+   docker compose config
+   docker compose build
+   ```
+
+3. Avvia la conversazione (per uscire: `esci` o Ctrl+C; il container viene rimosso):
+
+   ```powershell
+   docker compose run --rm assistente
+   ```
+
+**Indirizzo di LM Studio: locale e container.** Nel container `localhost` è il container stesso,
+non il computer. Per questo `docker-compose.yml` sostituisce `LMSTUDIO_URL` del `.env` con
+`http://host.docker.internal:1234/v1`, che dal container porta all'host. Lo stesso `.env` vale
+quindi per entrambi i modi di avvio. Anche `PERCORSO_LOG` è impostato da Compose: il log del
+container finisce nella cartella `logs\` dell'host.
+
+Nel log le righe scritte dal container hanno l'orario in UTC, quelle dell'avvio locale l'orario
+del computer.
+
 ## Strumento orologio
 
 Il modello non conosce l'ora: quando gli serve, chiede (tool calling) lo strumento `orologio`,
@@ -95,6 +130,24 @@ quando si raggiunge il limite compare una riga `WARNING limite raggiunto: ...`.
 - `Errore: impossibile ottenere una risposta dal modello (OpenAIInvalidRequestError)`: il server
   risponde ma rifiuta la richiesta; controlla con il comando di `/v1/models` che il modello sia
   disponibile e che l'identificativo coincida, poi riprova.
+
+- Docker: per controllare che il container raggiunga LM Studio sull'host:
+
+  ```powershell
+  docker compose run --rm -T assistente python -c "import urllib.request,json; print([m['id'] for m in json.load(urllib.request.urlopen('http://host.docker.internal:1234/v1/models', timeout=10))['data']])"
+  ```
+
+  Deve stampare l'elenco dei modelli. Se invece dà errore di connessione, in LM Studio verifica
+  che il server sia avviato.
+- Docker: per controllare l'immagine senza modello:
+
+  ```powershell
+  docker compose run --rm -T assistente python -c "from zoneinfo import ZoneInfo; ZoneInfo('Asia/Tokyo'); import assistente.grafo; print('ok')"
+  docker compose run --rm -T assistente ls -a /app
+  ```
+
+  Il primo stampa `ok`; il secondo elenca solo `assistente`, `logs` (la cartella del volume) e
+  `requirements.txt`.
 
 ## Test automatici
 
