@@ -28,9 +28,17 @@ def esegui_sessione(
             if domanda.lower() == COMANDO_USCITA:
                 break
             scrivi(PENSANDO)
-            esito = grafo.invoke(
-                {"messaggi": cronologia + [HumanMessage(domanda)], "chiamate_strumento": 0}
-            )
+            try:
+                esito = grafo.invoke(
+                    {"messaggi": cronologia + [HumanMessage(domanda)], "chiamate_strumento": 0}
+                )
+            except Exception as errore:
+                # La domanda fallita non entra nella cronologia; la sessione continua.
+                scrivi(
+                    "Errore: impossibile ottenere una risposta dal modello "
+                    f"({type(errore).__name__}). Controlla che LM Studio sia avviato."
+                )
+                continue
             cronologia = esito["messaggi"]
             scrivi(f"Assistente: {cronologia[-1].content}")
     except (KeyboardInterrupt, EOFError):

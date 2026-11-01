@@ -49,3 +49,25 @@ def test_ctrl_c_durante_attesa():
 def test_mostra_pensando_e_risposta():
     uscite, _ = avvia(["ciao", "esci"], [AIMessage("salve")])
     assert uscite.index(PENSANDO) < uscite.index("Assistente: salve")
+
+
+def test_cronologia_conservata():
+    _, modello = avvia(
+        ["mi chiamo Ada", "come mi chiamo?", "esci"],
+        [AIMessage("piacere, Ada"), AIMessage("ti chiami Ada")],
+    )
+    assert [m.content for m in modello.ricevuti[1]] == [
+        "mi chiamo Ada",
+        "piacere, Ada",
+        "come mi chiamo?",
+    ]
+
+
+def test_errore_modello_non_interrompe():
+    uscite, modello = avvia(["a", "b", "esci"], [ConnectionError(), AIMessage("ok")])
+    errore = next(u for u in uscite if u.startswith("Errore:"))
+    assert (
+        "Errore: impossibile ottenere una risposta dal modello (ConnectionError)" in errore
+    )
+    assert uscite.index(errore) < uscite.index("Assistente: ok")
+    assert [m.content for m in modello.ricevuti[1]] == ["b"]

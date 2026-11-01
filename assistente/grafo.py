@@ -2,7 +2,7 @@
 
 from typing import Annotated, TypedDict
 
-from langchain_core.messages import AIMessage, AnyMessage, BaseMessage
+from langchain_core.messages import AnyMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
@@ -18,19 +18,16 @@ class Stato(TypedDict):
     chiamate_strumento: int
 
 
-class RispostaFissa:
-    """Sostituto provvisorio del modello: risponde sempre la stessa frase."""
-
-    def invoke(self, messaggi: list[BaseMessage]) -> AIMessage:
-        return AIMessage("Risposta fissa: il modello non è ancora collegato.")
-
-
-def costruisci_grafo(modello):
+def costruisci_grafo(modello, istruzioni: str = ""):
     """Costruisce il grafo START → modello → END."""
 
     def nodo_modello(stato: Stato) -> dict:
         # Il modello legge tutta la conversazione e aggiunge la sua risposta.
-        return {"messaggi": [modello.invoke(stato["messaggi"])]}
+        # Le istruzioni di sistema vanno al modello ma non entrano nella cronologia.
+        messaggi = stato["messaggi"]
+        if istruzioni:
+            messaggi = [SystemMessage(istruzioni), *messaggi]
+        return {"messaggi": [modello.invoke(messaggi)]}
 
     grafo = StateGraph(Stato)
     grafo.add_node("modello", nodo_modello)
