@@ -10,3 +10,6 @@ logs/
 # Cache di Python e pytest
 __pycache__/
 .pytest_cache/
+
+# Impostazioni dell'editor
+.vscode/
