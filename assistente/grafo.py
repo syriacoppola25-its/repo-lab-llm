@@ -33,9 +33,15 @@ class Stato(TypedDict):
 
 
 def _richieste(stato: Stato) -> list[dict]:
-    """Le chiamate a strumenti chieste dall'ultimo messaggio del modello."""
+    """Le chiamate a strumenti chieste dall'ultimo messaggio del modello.
+
+    Include quelle con argomenti non leggibili (`invalid_tool_calls`): anche loro
+    devono ricevere una risposta, altrimenti la cronologia non è più valida.
+    """
     ultimo = stato["messaggi"][-1]
-    return list(ultimo.tool_calls) if isinstance(ultimo, AIMessage) else []
+    if not isinstance(ultimo, AIMessage):
+        return []
+    return [*ultimo.tool_calls, *ultimo.invalid_tool_calls]
 
 
 def instrada(stato: Stato, limite: int) -> Literal["strumenti", "limite", "fine"]:
@@ -84,7 +90,9 @@ def costruisci_grafo(
         for richiesta in _richieste(stato):
             passaggio += 1
             strumento = per_nome.get(richiesta["name"])
-            if strumento is None:
+            if richiesta.get("type") == "invalid_tool_call":
+                testo = "Errore: argomenti non validi (JSON non leggibile)."
+            elif strumento is None:
                 testo = f"Errore: strumento sconosciuto '{richiesta['name']}'."
             else:
                 try:

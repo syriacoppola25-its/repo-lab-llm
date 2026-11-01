@@ -124,3 +124,18 @@ def test_strumento_sconosciuto(tmp_path):
 
     risultato = next(m for m in esito["messaggi"] if isinstance(m, ToolMessage))
     assert risultato.content == "Errore: strumento sconosciuto 'meteo'."
+
+
+def test_chiamata_malformata_riceve_risposta(tmp_path):
+    # Argomenti non JSON: LangChain mette la chiamata in invalid_tool_calls.
+    malformata = {"name": "orologio", "args": "{fuso", "id": "1", "error": None, "type": "invalid_tool_call"}
+    modello = ModelloFinto([AIMessage("", invalid_tool_calls=[malformata]), AIMessage("ok")])
+
+    esito = grafo_con_orologio(modello, tmp_path).invoke(
+        {"messaggi": [HumanMessage("che ore sono?")], "chiamate_strumento": 0}
+    )
+
+    risultato = next(m for m in esito["messaggi"] if isinstance(m, ToolMessage))
+    assert risultato.tool_call_id == "1"
+    assert risultato.content.startswith("Errore: argomenti non validi")
+    assert esito["messaggi"][-1].content == "ok"
