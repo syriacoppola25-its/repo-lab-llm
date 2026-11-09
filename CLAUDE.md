@@ -44,7 +44,8 @@ Un'applicazione da terminale in Python che conversa con un modello locale e:
 - Niente interfacce grafiche, servizi cloud o framework non concordati.
 - Lavorare solo dentro `repo-lab-llm/`. La repository contiene altre lezioni:
   non leggerle per copiarne il codice e non modificarle.
-- Lavorare nel branch corrente; nessun branch o worktree nuovo se non richiesto.
+- Lavorare nel branch `dev`; `main` riceve il lavoro solo alla fine, su mia richiesta.
+  Nessun altro branch o worktree se non richiesto.
 
 ## Scelte tecniche
 - Python, codice sincrono e moduli piccoli, con una separazione semplice tra
