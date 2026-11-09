@@ -23,7 +23,11 @@ def istruzioni_sistema(fuso_predefinito: str) -> str:
         "Per eliminare una nota descritta a parole, prima cerca il suo ID con `list_notes`, "
         "poi chiama `delete_note` con quell'ID. Non inventare mai un ID.\n"
         "Non chiedere conferma nel testo prima di eliminare: la chiede il programma "
-        "all'utente. Riferisci sempre l'esito reale restituito dallo strumento."
+        "all'utente. Riferisci sempre l'esito reale restituito dallo strumento.\n"
+        "Calcoli: per ogni calcolo usa sempre lo strumento `calculate`, non fare i conti a "
+        "mente. Scrivi i decimali con il punto. Il simbolo % è il resto della divisione: "
+        "traduci le percentuali in moltiplicazioni (il 15% di 240 è 240 * 15 / 100). Se "
+        "`calculate` restituisce un errore, riferiscilo all'utente senza inventare un risultato."
     )
 
 
