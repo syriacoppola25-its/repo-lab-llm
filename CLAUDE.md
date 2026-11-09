@@ -6,12 +6,15 @@ La cartella del progetto è `repo-lab-llm/`.
 ## Struttura
 - `assistente/`: `config.py` (variabili d'ambiente), `modello.py` (LM Studio, istruzioni di
   sistema), `strumenti.py` (orologio, `ErroreCollegamento`), `registro.py` (log su file),
-  `grafo.py` (stato, nodi, `instrada`, conferme), `note_mcp.py` (client MCP sincrono con
-  discovery), `conferma.py` (conferma `s/n` prima di `delete_note`), `terminale.py` (ciclo e
-  cronologia), `__main__.py` (avvio, insieme al server delle note).
+  `grafo.py` (stato, nodi, `instrada`, conferme), `client_mcp.py` (`ClientMCP`: client MCP
+  sincrono con discovery, uno per server), `note_mcp.py` (`ClientNote`), `calcolatrice_mcp.py`
+  (`ClientCalcolatrice`), `conferma.py` (conferma `s/n` prima di `delete_note`), `terminale.py`
+  (ciclo e cronologia), `__main__.py` (avvio, insieme ai due server MCP).
 - `server_note/`: server MCP delle note (FastMCP, stdio): `archivio.py` (SQLite),
   `server.py` (tool `add_note`, `list_notes`, `delete_note`), `__main__.py`.
-- `tests/`: test senza modello (il server delle note si avvia davvero via stdio);
+- `server_calcolatrice/`: server MCP della calcolatrice (FastMCP, stdio): `valutatore.py`
+  (aritmetica con `ast`, senza `eval`), `server.py` (tool `calculate`), `__main__.py`.
+- `tests/`: test senza modello (i server MCP si avviano davvero via stdio);
   `test_reale_lmstudio.py` è la prova reale.
 - `Dockerfile`, `docker-compose.yml`; `.env` locale (non versionato) da `.env.example`;
   `dati/` (archivio delle note) e `logs/` non versionati.
@@ -33,12 +36,14 @@ Un'applicazione da terminale in Python che conversa con un modello locale e:
   ed eseguito davvero dal programma;
 - gestisce note persistenti tramite un server MCP separato (lezione 5), con conferma
   dell'eliminazione chiesta dal programma;
+- offre una calcolatrice sicura tramite un secondo server MCP (lezione 5): solo operazioni
+  ammesse, rifiuto esplicito degli input non validi;
 - si avvia anche con Docker Compose.
 
 ## Confini
-- Implementare solo i requisiti concordati. MCP è ammesso per le note (un solo server, stdio);
-  altri strumenti o server MCP, workflow e RAG arriveranno nelle lezioni successive: non
-  anticiparli.
+- Implementare solo i requisiti concordati. MCP è ammesso per le note e per la calcolatrice
+  (due server, entrambi stdio); altri strumenti o server MCP, workflow e RAG arriveranno nelle
+  lezioni successive: non anticiparli.
 - Nome, descrizione e schema dei tool MCP stanno solo nel server: il client li ottiene con la
   discovery, non li riscrive.
 - Niente interfacce grafiche, servizi cloud o framework non concordati.
@@ -53,6 +58,7 @@ Un'applicazione da terminale in Python che conversa con un modello locale e:
 - LM Studio sull'host, raggiunto tramite la sua API compatibile con OpenAI.
 - Indirizzo del server e identificativo del modello solo da variabili d'ambiente.
   L'identificativo è quello restituito dal server (`GET /v1/models`), mai inventato.
+- Modello di riferimento per uso e prove reali: `google/gemma-4-e4b` (indicazione del corso).
 - Un file di configurazione di esempio senza credenziali; il file reale resta fuori da Git.
 - Docker Compose per l'applicazione; LM Studio non va containerizzato.
 - Dipendenze motivate, concordate e con versioni fissate.

@@ -7,7 +7,9 @@ Stato attuale: l'assistente conversa con un modello servito da LM Studio e ricor
 conversazione per la durata della sessione. Quando serve l'ora chiede lo strumento `orologio`,
 che il programma esegue davvero. Può salvare, elencare ed eliminare **note persistenti** tramite
 un server MCP separato (`server_note/`); prima di ogni eliminazione chiede conferma nel
-terminale. Si avvia sia in locale sia con Docker Compose.
+terminale. Fa i conti con una **calcolatrice sicura** offerta da un secondo server MCP
+(`server_calcolatrice/`), che rifiuta in modo esplicito ogni input non ammesso. Si avvia sia in
+locale sia con Docker Compose.
 
 ## Preparare l'ambiente (PowerShell)
 
@@ -56,7 +58,7 @@ comando precedente):
 
 ```powershell
 $env:LMSTUDIO_URL = "http://localhost:1234/v1"
-$env:LMSTUDIO_MODELLO = "google/gemma-4-e2b"
+$env:LMSTUDIO_MODELLO = "google/gemma-4-e4b"
 python -m assistente
 ```
 
@@ -76,7 +78,7 @@ Serve Docker Desktop avviato.
 
    ```
    LMSTUDIO_URL=http://localhost:1234/v1
-   LMSTUDIO_MODELLO=google/gemma-4-e2b
+   LMSTUDIO_MODELLO=google/gemma-4-e4b
    ```
 
 2. Controlla la configurazione e costruisci l'immagine:
@@ -164,6 +166,32 @@ riutilizzati, quindi un numero vecchio non può cancellare una nota nuova.
 (errore restituito dal server, nessun effetto) oppure `Errore di collegamento: ...` (server non
 raggiungibile). Gli avvisi del server vanno in `logs/server_note.log`, non nel terminale.
 
+## Calcolatrice sicura (MCP)
+
+Un secondo **server MCP** (`server_calcolatrice/`, FastMCP, stdio) espone un solo tool,
+`calculate(expression)`. L'assistente lo avvia da solo insieme al server delle note e ne legge
+il catalogo allo stesso modo. Il client è uno solo (`ClientMCP` in `assistente/client_mcp.py`),
+usato una volta per server.
+
+L'espressione **non viene mai eseguita come codice** (niente `eval`): viene analizzata con il
+modulo `ast` e si calcolano solo gli elementi ammessi.
+
+- Ammessi: numeri interi e decimali **con il punto** (`12.5`, `.5`), `+ - * / // % **`,
+  parentesi tonde, segno `+`/`-` davanti a un numero.
+- `%` è il **resto** della divisione, non la percentuale: il modello traduce «il 15% di 240» in
+  `240 * 15 / 100`.
+- Limiti: espressione di al massimo 200 caratteri; esponente al massimo 100 in valore assoluto;
+  ogni valore, anche intermedio, sotto `10**50` (interi) o `1e50` (decimali).
+- Risultato: `{"espressione": "(12.5 + 7) * 3", "risultato": 58.5}`; intero se il valore è
+  intero, altrimenti arrotondato a 12 cifre significative (`0.1 + 0.2` → `0.3`).
+
+Ogni altro input è rifiutato con un errore che dice che cosa non va, per esempio
+`Errore dello strumento: elemento non ammesso: chiamata di funzione` per `sqrt(4)`,
+`divisione per zero`, `virgola non ammessa: i decimali si scrivono con il punto`,
+`notazione numerica non ammessa: '1e5'`, `esponente troppo grande: ...`. Il modello deve
+riferire l'errore, non inventare un risultato. Gli avvisi del server vanno in
+`logs/server_calcolatrice.log`.
+
 ## Diagnosi
 
 - `Variabile d'ambiente LMSTUDIO_URL mancante. Vedi .env.example.`: le variabili non sono
@@ -179,6 +207,12 @@ raggiungibile). Gli avvisi del server vanno in `logs/server_note.log`, non nel t
 - `Impossibile avviare il server delle note (...)`: il sottoprocesso `python -m server_note`
   non è partito. Controlla `logs\server_note.log` e che le dipendenze siano installate
   (`python -m pip check`).
+- `Impossibile avviare il server della calcolatrice (...)`: come sopra, con
+  `python -m server_calcolatrice` e `logs\server_calcolatrice.log`. L'assistente non parte
+  senza uno dei due server.
+- La calcolatrice non si comporta come previsto: `python -m pytest tests/test_valutatore.py
+  tests/test_server_calcolatrice.py tests/test_calcolatrice_mcp.py -q` (senza modello); nel log
+  cerca `strumento=calculate`. Se manca, il modello ha risposto senza usare lo strumento.
 - Le note non si comportano come previsto: diagnosi per livelli.
   1. Il server risponde? `python -m pytest tests/test_server_note.py tests/test_note_mcp.py -q`
      (catalogo, chiamata diretta ed errori, senza modello).
@@ -198,12 +232,12 @@ raggiungibile). Gli avvisi del server vanno in `logs/server_note.log`, non nel t
 - Docker: per controllare l'immagine senza modello:
 
   ```powershell
-  docker compose run --rm -T assistente python -c "from zoneinfo import ZoneInfo; ZoneInfo('Asia/Tokyo'); import assistente.grafo, assistente.note_mcp, server_note.server; print('ok')"
+  docker compose run --rm -T assistente python -c "from zoneinfo import ZoneInfo; ZoneInfo('Asia/Tokyo'); import assistente.grafo, assistente.note_mcp, assistente.calcolatrice_mcp, server_note.server, server_calcolatrice.server; print('ok')"
   docker compose run --rm -T assistente ls -a /app
   ```
 
-  Il primo stampa `ok`; il secondo elenca solo `assistente`, `server_note`, `dati` e `logs` (le
-  cartelle dei volumi) e `requirements.txt`.
+  Il primo stampa `ok`; il secondo elenca solo `assistente`, `server_note`,
+  `server_calcolatrice`, `dati` e `logs` (le cartelle dei volumi) e `requirements.txt`.
 
 ## Test automatici
 
@@ -222,13 +256,17 @@ python -m pytest tests/test_reale_lmstudio.py -q
 Remove-Item Env:PROVA_LMSTUDIO
 ```
 
-La prova usa il modello vero (circa 2 minuti):
+La prova usa il modello vero (con `google/gemma-4-e4b` circa 6 minuti) e gli lega tutti gli
+strumenti (orologio, note, calcolatrice):
 - «Che ore sono a Tokyo?» → strumento `orologio` con `Asia/Tokyo`;
 - «Ricordami che ho un meeting giovedì 4 alle 10» → una sola `add_note`;
 - «Fammi vedere le note» → `list_notes` e la nota nella risposta;
 - «Cancella la nota dell'appuntamento di giovedì 4» → `list_notes` prima di `delete_note`,
   archivio vuoto;
-- «Elimina la nota 99» → `delete_note` con errore dello strumento, nessuna nota eliminata.
+- «Elimina la nota 99» → `delete_note` con errore dello strumento, nessuna nota eliminata;
+- «Quanto fa (12,5 + 7) * 3?» → `calculate` e 58.5 nella risposta;
+- «Quanto fa 10 diviso 0?» → `calculate` con errore dello strumento riferito;
+- «Quanto è il 15% di 240?» → `calculate` e 36 nella risposta.
 
 Le note usano un archivio temporaneo e la conferma è fissa (sì). Il modello non è
 deterministico: conviene ripeterla più volte.
@@ -248,7 +286,7 @@ Ordine delle prove per ricontrollare tutto da zero (PowerShell, nella cartella d
    python -m pytest -v
    ```
 
-   Esito atteso: `No broken requirements found.` e `85 passed, 5 skipped`.
+   Esito atteso: `No broken requirements found.` e `174 passed, 8 skipped`.
 2. LM Studio: elenco dei modelli (sezione «Configurazione»), prova reale con
    `PROVA_LMSTUDIO` (sezione «Test automatici», ripetuta più volte) e conversazione con
    `python -m assistente`: «che ore sono?», «e a Tokyo?», «di che cosa abbiamo parlato?»,
@@ -259,10 +297,15 @@ Ordine delle prove per ricontrollare tutto da zero (PowerShell, nella cartella d
 3. Docker: `docker compose build`, i due controlli dell'immagine (sezione «Diagnosi») e
    `docker compose run --rm assistente` con una domanda sull'ora di Tokyo, poi `esci`. Poi
    aggiungi una nota, esci, riavvia il container e chiedi le note: la nota deve esserci
-   (è in `dati\note.db` sull'host).
+   (è in `dati\note.db` sull'host). Infine chiedi «quanto fa (12,5 + 7) * 3?» e «quanto fa
+   10 diviso 0?»: nel log devono comparire due righe `strumento=calculate`, la seconda con
+   `esito=errore_strumento`.
 
-Comportamento noto del modello `google/gemma-4-e2b`: usa correttamente lo strumento, ma spesso
-nomina il fuso `Europe/Rome` anche quando non serve.
+Modello di riferimento: `google/gemma-4-e4b` (indicazione del corso), con cui la prova reale
+passa 8/8. Il modello più piccolo `google/gemma-4-e2b` passa 7/8: con «Quanto fa 10 diviso 0?»
+spesso risponde a memoria o scrive la chiamata come testo
+(`calculate{expression:<|"|>10 / 0<|"|>}`) invece di chiamare lo strumento; inoltre nomina il
+fuso `Europe/Rome` anche quando non serve.
 
 ## Come è fatto il grafo
 
