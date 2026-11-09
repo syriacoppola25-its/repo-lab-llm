@@ -81,6 +81,14 @@ def test_id_inesistente_errore_senza_effetti(client, tmp_path):
     assert note_salvate(client) == ["meeting giovedì 4 alle 10"]
 
 
+def test_id_decimale_non_elimina_senza_conferma(client, tmp_path):
+    # Il server accetterebbe "1.0" come 1: la conferma non deve lasciarlo passare.
+    risultati, domande = elimina_descrivendo(client, tmp_path, "n", note_id="1.0")
+
+    assert risultati["2"] == MESSAGGIO_ANNULLATA
+    assert note_salvate(client) == ["meeting giovedì 4 alle 10"]
+
+
 def test_testo_nota_con_client_chiuso(tmp_path):
     client = ClientNote(tmp_path / "note.db", "Europe/Rome", tmp_path / "server_note.log")
     assert modulo_conferma.testo_nota(client, 1) is None

@@ -62,7 +62,15 @@ def test_ctrl_c_non_intercettato():
         conferma({"note_id": 3})
 
 
-def test_id_non_numerico_lascia_decidere_il_server():
-    conferma, domande, _ = conferma_con("n")
-    assert conferma({"note_id": "tre"}) is True
+@pytest.mark.parametrize("note_id", ["tre", "1.0", 1.0, True, " 3", "", None, "٣"])
+def test_id_non_intero_annulla_senza_chiedere(note_id):
+    # Mai True senza domanda: un ID che non è un intero non elimina nulla.
+    conferma, domande, cercati = conferma_con("s")
+    assert conferma({"note_id": note_id}) is False
+    assert domande == [] and cercati == []
+
+
+def test_id_mancante_annulla():
+    conferma, domande, _ = conferma_con("s")
+    assert conferma({}) is False
     assert domande == []

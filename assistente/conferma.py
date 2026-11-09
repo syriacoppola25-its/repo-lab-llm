@@ -1,6 +1,7 @@
 """Conferma dell'utente, nel terminale, prima di eliminare una nota."""
 
 import json
+import re
 from typing import Callable
 
 from assistente.note_mcp import ClientNote
@@ -19,11 +20,10 @@ def crea_conferma_eliminazione(
     """
 
     def conferma(argomenti: dict) -> bool:
-        try:
-            note_id = int(argomenti.get("note_id"))
-        except (TypeError, ValueError):
-            # ID non numerico: nessuna nota da mostrare, il server risponderà con l'errore.
-            return True
+        note_id = _id_intero(argomenti.get("note_id"))
+        if note_id is None:
+            # Mai eliminare senza domanda: un ID che non è un intero annulla.
+            return False
         testo = trova_testo(note_id)
         nota = f"la nota {note_id}: «{testo}»" if testo is not None else f"la nota {note_id}"
         try:
@@ -33,6 +33,15 @@ def crea_conferma_eliminazione(
         return risposta.strip().lower() in RISPOSTE_AFFERMATIVE
 
     return conferma
+
+
+def _id_intero(valore) -> int | None:
+    """L'ID come intero se è un `int` (non `bool`) o una stringa di cifre ASCII; altrimenti `None`."""
+    if isinstance(valore, int) and not isinstance(valore, bool):
+        return valore
+    if isinstance(valore, str) and re.fullmatch(r"[0-9]+", valore):
+        return int(valore)
+    return None
 
 
 def testo_nota(client: ClientNote, note_id: int) -> str | None:
