@@ -52,6 +52,17 @@ def test_invocazione_diretta(client):
     assert [n["testo"] for n in elenco["note"]] == ["ciao"]
 
 
+def test_argomento_nome_non_cambia_strumento(client):
+    # Un argomento del modello chiamato "nome" non deve scegliere un altro strumento.
+    client.chiama("add_note", {"text": "da tenere"})
+    try:
+        per_nome(client)["list_notes"].invoke({"nome": "delete_note", "note_id": 1})
+    except ToolException:
+        pass  # il server può rifiutare l'argomento sconosciuto: va bene, purché non elimini
+    elenco = json.loads(client.chiama("list_notes", {}))
+    assert [n["testo"] for n in elenco["note"]] == ["da tenere"]
+
+
 def test_chiama_per_nome(client):
     client.chiama("add_note", {"text": "report venerdì"})
     assert json.loads(client.chiama("list_notes", {"limit": 100}))["totale"] == 1

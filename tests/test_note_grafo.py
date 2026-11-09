@@ -89,6 +89,32 @@ def test_id_decimale_non_elimina_senza_conferma(client, tmp_path):
     assert note_salvate(client) == ["meeting giovedì 4 alle 10"]
 
 
+def test_list_notes_con_argomento_nome_non_elimina(client, tmp_path):
+    # Il modello chiede list_notes con un argomento "nome": la conferma non scatta
+    # (non è delete_note), quindi nessuna nota deve sparire.
+    modello = ModelloFinto(
+        [
+            AIMessage(
+                "",
+                tool_calls=[richiesta("1", "list_notes", {"nome": "delete_note", "note_id": 1})],
+            ),
+            AIMessage("fatto"),
+        ]
+    )
+    domande = []
+    conferma = crea_conferma_eliminazione(lambda i: None, leggi=lambda d: domande.append(d) or "n")
+    grafo = costruisci_grafo(
+        modello,
+        strumenti=client.strumenti(),
+        conferme={"delete_note": conferma},
+        registro=configura_registro(tmp_path / "a.log"),
+    )
+    grafo.invoke({"messaggi": [HumanMessage("mostra le note")], "chiamate_strumento": 0})
+
+    assert domande == []
+    assert note_salvate(client) == ["meeting giovedì 4 alle 10"]
+
+
 def test_testo_nota_con_client_chiuso(tmp_path):
     client = ClientNote(tmp_path / "note.db", "Europe/Rome", tmp_path / "server_note.log")
     assert modulo_conferma.testo_nota(client, 1) is None

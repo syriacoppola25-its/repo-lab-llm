@@ -119,10 +119,18 @@ class ClientNote:
                 name=scoperto.name,
                 description=scoperto.description,
                 args_schema=scoperto.args_schema,
-                func=lambda nome=scoperto.name, **argomenti: self.chiama(nome, argomenti),
+                func=self._esecutore(scoperto.name),
             )
             for scoperto in self._scoperti.values()
         ]
+
+    def _esecutore(self, nome: str):
+        # Il nome sta nella closure, non tra i parametri: un argomento del modello
+        # chiamato `nome` non può cambiare lo strumento eseguito.
+        def esegui(**argomenti) -> str:
+            return self.chiama(nome, argomenti)
+
+        return esegui
 
     def chiama(self, nome: str, argomenti: dict) -> str:
         """Esegue il tool `nome` sul server e ne restituisce il testo.
