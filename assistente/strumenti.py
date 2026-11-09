@@ -1,10 +1,17 @@
-"""Strumenti che il modello può chiedere di eseguire: per ora solo l'orologio."""
+"""Strumenti locali (l'orologio) ed errori comuni a tutti gli strumenti."""
 
 from datetime import datetime, timezone
 from typing import Callable
 from zoneinfo import ZoneInfo
 
 from langchain_core.tools import BaseTool, StructuredTool
+
+
+class ErroreCollegamento(Exception):
+    """Uno strumento esterno non è raggiungibile (server spento, chiuso o lento).
+
+    È diverso da un errore restituito dallo strumento stesso (`ToolException`).
+    """
 
 
 def ora_corrente(fuso_orario: str | None, adesso: datetime, fuso_predefinito: str) -> str:
