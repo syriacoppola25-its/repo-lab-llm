@@ -1,10 +1,11 @@
 from datetime import datetime, timezone
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.tools import StructuredTool, ToolException
 
-from assistente.grafo import MESSAGGIO_LIMITE, costruisci_grafo, instrada
+from assistente.grafo import MESSAGGIO_ANNULLATA, MESSAGGIO_LIMITE, costruisci_grafo, instrada
 from assistente.registro import configura_registro
-from assistente.strumenti import crea_orologio
+from assistente.strumenti import ErroreCollegamento, crea_orologio
 from tests.finti import ModelloFinto
 
 ISTANTE = datetime(2026, 10, 26, 14, 0, tzinfo=timezone.utc)
@@ -85,7 +86,7 @@ def test_ciclo_completo(tmp_path):
     assert esito["chiamate_strumento"] == 1
     assert modello.ricevuti[1][-1] == messaggi[2]
     log = (tmp_path / "a.log").read_text(encoding="utf-8")
-    assert "passaggio=1 strumento=orologio" in log
+    assert "passaggio=1 id=1 strumento=orologio" in log
     assert "Asia/Tokyo" in log
 
 
@@ -139,3 +140,130 @@ def test_chiamata_malformata_riceve_risposta(tmp_path):
     assert risultato.tool_call_id == "1"
     assert risultato.content.startswith("Errore: argomenti non validi")
     assert esito["messaggi"][-1].content == "ok"
+
+
+# --- Strumenti esterni: errori distinti, conferma, log correlato -----------------
+
+
+def finto_delete_note(esito=None):
+    """`delete_note` finto: registra gli argomenti ricevuti; `esito` può essere un'eccezione."""
+    ricevuti = []
+
+    def delete_note(note_id: int) -> str:
+        ricevuti.append({"note_id": note_id})
+        if isinstance(esito, BaseException):
+            raise esito
+        return f"eliminata {note_id}"
+
+    strumento = StructuredTool.from_function(delete_note, description="Elimina una nota.")
+    return strumento, ricevuti
+
+
+def elimina(id, note_id=3):
+    return chiamata(id, args={"note_id": note_id}, nome="delete_note")
+
+
+def grafo_con_note(modello, tmp_path, strumento, conferme={}):
+    return costruisci_grafo(
+        modello,
+        strumenti=[crea_orologio("Europe/Rome", adesso=lambda: ISTANTE), strumento],
+        conferme=conferme,
+        registro=configura_registro(tmp_path / "a.log"),
+    )
+
+
+def esegui(grafo, domanda="cancella la nota"):
+    return grafo.invoke({"messaggi": [HumanMessage(domanda)], "chiamate_strumento": 0})
+
+
+def risultati(esito):
+    return {m.tool_call_id: m.content for m in esito["messaggi"] if isinstance(m, ToolMessage)}
+
+
+def log(tmp_path):
+    return (tmp_path / "a.log").read_text(encoding="utf-8")
+
+
+def test_errore_strumento_distinto(tmp_path):
+    strumento, _ = finto_delete_note(ToolException("Nessuna nota con ID 99."))
+    modello = ModelloFinto([AIMessage("", tool_calls=[elimina("1", 99)]), AIMessage("non esiste")])
+
+    esito = esegui(grafo_con_note(modello, tmp_path, strumento))
+
+    assert risultati(esito) == {"1": "Errore dello strumento: Nessuna nota con ID 99."}
+    assert "esito=errore_strumento" in log(tmp_path)
+
+
+def test_errore_collegamento_distinto(tmp_path):
+    strumento, _ = finto_delete_note(ErroreCollegamento("server chiuso"))
+    modello = ModelloFinto([AIMessage("", tool_calls=[elimina("1")]), AIMessage("non riesco")])
+
+    esito = esegui(grafo_con_note(modello, tmp_path, strumento))
+
+    assert risultati(esito) == {"1": "Errore di collegamento: server chiuso"}
+    assert "esito=errore_collegamento" in log(tmp_path)
+
+
+def test_conferma_si_esegue(tmp_path):
+    strumento, ricevuti = finto_delete_note()
+    modello = ModelloFinto([AIMessage("", tool_calls=[elimina("1")]), AIMessage("fatto")])
+    chieste = []
+
+    def conferma(argomenti):
+        chieste.append(argomenti)
+        return True
+
+    esito = esegui(grafo_con_note(modello, tmp_path, strumento, {"delete_note": conferma}))
+
+    assert chieste == [{"note_id": 3}]
+    assert ricevuti == [{"note_id": 3}]
+    assert risultati(esito) == {"1": "eliminata 3"}
+    assert "conferma=si" in log(tmp_path) and "esito=ok" in log(tmp_path)
+
+
+def test_conferma_no_non_esegue(tmp_path):
+    strumento, ricevuti = finto_delete_note()
+    modello = ModelloFinto([AIMessage("", tool_calls=[elimina("1")]), AIMessage("annullata")])
+
+    esito = esegui(grafo_con_note(modello, tmp_path, strumento, {"delete_note": lambda a: False}))
+
+    assert ricevuti == []
+    assert risultati(esito) == {"1": MESSAGGIO_ANNULLATA}
+    assert "esito=annullata" in log(tmp_path) and "conferma=no" in log(tmp_path)
+    assert esito["messaggi"][-1].content == "annullata"
+
+
+def test_due_eliminazioni_due_conferme(tmp_path):
+    strumento, ricevuti = finto_delete_note()
+    modello = ModelloFinto(
+        [AIMessage("", tool_calls=[elimina("a", 1), elimina("b", 2)]), AIMessage("ok")]
+    )
+    risposte = iter([True, False])
+
+    esito = esegui(
+        grafo_con_note(modello, tmp_path, strumento, {"delete_note": lambda a: next(risposte)})
+    )
+
+    assert ricevuti == [{"note_id": 1}]
+    assert risultati(esito) == {"a": "eliminata 1", "b": MESSAGGIO_ANNULLATA}
+
+
+def test_log_contiene_tool_call_id(tmp_path):
+    modello = ModelloFinto([AIMessage("", tool_calls=[chiamata("1")]), AIMessage("ok")])
+
+    esegui(grafo_con_orologio(modello, tmp_path), "che ore sono a Tokyo?")
+
+    assert "id=1 strumento=orologio" in log(tmp_path)
+    assert "esito=ok" in log(tmp_path)
+
+
+def test_orologio_funziona_con_note_scollegate(tmp_path):
+    strumento, _ = finto_delete_note(ErroreCollegamento("server chiuso"))
+    modello = ModelloFinto(
+        [AIMessage("", tool_calls=[elimina("1"), chiamata("2")]), AIMessage("ok")]
+    )
+
+    esito = esegui(grafo_con_note(modello, tmp_path, strumento))
+
+    assert risultati(esito)["1"] == "Errore di collegamento: server chiuso"
+    assert risultati(esito)["2"].startswith("2026-10-26 23:00:00 Asia/Tokyo")

@@ -7,17 +7,20 @@
 """
 
 import logging
-from typing import Annotated, Literal, Sequence, TypedDict
+from typing import Annotated, Callable, Literal, Mapping, Sequence, TypedDict
 
 from langchain_core.messages import AIMessage, AnyMessage, SystemMessage, ToolMessage
-from langchain_core.tools import BaseTool
+from langchain_core.tools import BaseTool, ToolException
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
+
+from assistente.strumenti import ErroreCollegamento
 
 MESSAGGIO_LIMITE = (
     "Non sono riuscito a completare la risposta (limite di passaggi raggiunto). "
     "Riprova o riformula la domanda."
 )
+MESSAGGIO_ANNULLATA = "Eliminazione annullata dall'utente: nessuna nota è stata eliminata."
 
 
 class Stato(TypedDict):
@@ -69,8 +72,13 @@ def costruisci_grafo(
     strumenti: Sequence[BaseTool] = (),
     limite: int = 5,
     registro: logging.Logger | None = None,
+    conferme: Mapping[str, Callable[[dict], bool]] = {},
 ):
-    """Costruisce il grafo con i nodi `modello`, `strumenti` e `limite`."""
+    """Costruisce il grafo con i nodi `modello`, `strumenti` e `limite`.
+
+    `conferme` associa al nome di uno strumento una funzione che riceve gli
+    argomenti e decide se eseguirlo (per esempio chiedendo all'utente).
+    """
     per_nome = {s.name: s for s in strumenti}
     registro = registro or _registro_muto()
 
@@ -82,6 +90,30 @@ def costruisci_grafo(
             messaggi = [SystemMessage(istruzioni), *messaggi]
         return {"messaggi": [modello.invoke(messaggi)]}
 
+    def esegui(richiesta: dict) -> tuple[str, str, str]:
+        """Esegue una richiesta: restituisce (testo per il modello, esito, nota di conferma)."""
+        nome = richiesta["name"]
+        strumento = per_nome.get(nome)
+        if richiesta.get("type") == "invalid_tool_call":
+            return "Errore: argomenti non validi (JSON non leggibile).", "argomenti_non_validi", ""
+        if strumento is None:
+            return f"Errore: strumento sconosciuto '{nome}'.", "strumento_sconosciuto", ""
+        conferma = ""
+        if nome in conferme:
+            # La conferma avviene prima dell'esecuzione: con un "no" lo strumento non parte.
+            if not conferme[nome](richiesta["args"]):
+                return MESSAGGIO_ANNULLATA, "annullata", " conferma=no"
+            conferma = " conferma=si"
+        try:
+            return str(strumento.invoke(richiesta["args"])), "ok", conferma
+        except ToolException as errore:
+            return f"Errore dello strumento: {errore}", "errore_strumento", conferma
+        except ErroreCollegamento as errore:
+            return f"Errore di collegamento: {errore}", "errore_collegamento", conferma
+        except Exception as errore:
+            testo = f"Errore: argomenti non validi ({type(errore).__name__})."
+            return testo, "argomenti_non_validi", conferma
+
     def nodo_strumenti(stato: Stato) -> dict:
         # Esegue davvero ogni strumento richiesto e restituisce il risultato al modello.
         # Gli errori diventano testo per il modello, mai eccezioni.
@@ -89,19 +121,10 @@ def costruisci_grafo(
         passaggio = stato["chiamate_strumento"]
         for richiesta in _richieste(stato):
             passaggio += 1
-            strumento = per_nome.get(richiesta["name"])
-            if richiesta.get("type") == "invalid_tool_call":
-                testo = "Errore: argomenti non validi (JSON non leggibile)."
-            elif strumento is None:
-                testo = f"Errore: strumento sconosciuto '{richiesta['name']}'."
-            else:
-                try:
-                    testo = str(strumento.invoke(richiesta["args"]))
-                except Exception as errore:
-                    testo = f"Errore: argomenti non validi ({type(errore).__name__})."
+            testo, esito, conferma = esegui(richiesta)
             registro.info(
-                f"passaggio={passaggio} strumento={richiesta['name']} "
-                f"argomenti={richiesta['args']} risultato={testo}"
+                f"passaggio={passaggio} id={richiesta['id']} strumento={richiesta['name']} "
+                f"argomenti={richiesta['args']}{conferma} esito={esito} risultato={testo}"
             )
             risultati.append(ToolMessage(testo, tool_call_id=richiesta["id"]))
         return {"messaggi": risultati, "chiamate_strumento": passaggio}
