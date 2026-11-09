@@ -20,6 +20,7 @@ class Config:
     fuso_predefinito: str = "Europe/Rome"
     limite_chiamate: int = 5
     percorso_log: Path = Path("logs/assistente.log")
+    percorso_note: Path = Path("dati/note.db")
 
 
 def _obbligatoria(env: Mapping[str, str], nome: str) -> str:
@@ -65,10 +66,12 @@ def carica_config(env: Mapping[str, str]) -> Config:
             )
 
     percorso = _facoltativa(env, "PERCORSO_LOG")
+    note = _facoltativa(env, "PERCORSO_NOTE")
     return Config(
         url_server=url_server,
         modello=modello,
         fuso_predefinito=fuso,
         limite_chiamate=limite,
         percorso_log=Path(percorso) if percorso else predefinita.percorso_log,
+        percorso_note=Path(note) if note else predefinita.percorso_note,
     )

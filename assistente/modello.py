@@ -17,7 +17,13 @@ def istruzioni_sistema(fuso_predefinito: str) -> str:
         "IANA (per esempio Asia/Tokyo per Tokyo).\n"
         f"Il fuso predefinito è {fuso_predefinito}. Se l'utente non indica un luogo, "
         "rispondi con data e ora senza scrivere il nome del fuso. Se l'utente indica un "
-        "luogo, scrivi anche il fuso usato."
+        "luogo, scrivi anche il fuso usato.\n"
+        "Note: quando l'utente chiede di ricordare o annotare qualcosa, usa `add_note` una "
+        "sola volta. Per mostrare le note usa `list_notes`.\n"
+        "Per eliminare una nota descritta a parole, prima cerca il suo ID con `list_notes`, "
+        "poi chiama `delete_note` con quell'ID. Non inventare mai un ID.\n"
+        "Non chiedere conferma nel testo prima di eliminare: la chiede il programma "
+        "all'utente. Riferisci sempre l'esito reale restituito dallo strumento."
     )
 
 

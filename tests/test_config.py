@@ -17,6 +17,14 @@ def test_valori_obbligatori_e_predefiniti():
     )
 
 
+def test_percorso_note_predefinito():
+    assert carica_config(VALIDA).percorso_note == Path("dati/note.db")
+
+
+def test_percorso_note_da_variabile():
+    assert carica_config({**VALIDA, "PERCORSO_NOTE": "x/n.db"}).percorso_note == Path("x/n.db")
+
+
 def test_variabile_mancante():
     with pytest.raises(ConfigErrata, match="LMSTUDIO_URL"):
         carica_config({})
