@@ -112,3 +112,13 @@ def test_formatta():
     assert formatta(0.1 + 0.2) == 0.3
     assert formatta(7) == 7
     assert formatta(2 / 3) == 0.666666666667
+
+
+@pytest.mark.parametrize(
+    "espressione, atteso",
+    [("1.1 * 10 ** 25", 1.1e25), ("10.0 ** 23", 1e23), ("10 ** 49 + 0.5", 1e49)],
+)
+def test_decimali_grandi_senza_cifre_false(espressione, atteso):
+    # Oltre 2**53 un decimale sembra sempre intero: come int mostrerebbe cifre inventate.
+    risultato = formatta(valuta(espressione))
+    assert type(risultato) is float and risultato == atteso

@@ -145,7 +145,8 @@ def valuta(espressione: str) -> int | float:
 def formatta(valore: int | float) -> int | float:
     """Intero se il valore è intero, altrimenti 12 cifre significative (0.1 + 0.2 → 0.3)."""
     if isinstance(valore, float):
-        if valore.is_integer():
+        # Oltre 2**53 ogni decimale "è intero": come int mostrerebbe cifre false.
+        if valore.is_integer() and abs(valore) < 2**53:
             return int(valore)
         return float(f"{valore:.12g}")
     return valore
