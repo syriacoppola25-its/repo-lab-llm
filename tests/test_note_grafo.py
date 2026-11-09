@@ -1,7 +1,10 @@
 """Grafo con il server delle note vero (via stdio) e un modello finto."""
 
+import asyncio
 import json
+from datetime import datetime, timezone
 
+import mcp.client.stdio as stdio_mcp
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
@@ -11,6 +14,7 @@ from assistente.grafo import MESSAGGIO_ANNULLATA, costruisci_grafo
 from assistente.modello import istruzioni_sistema
 from assistente.note_mcp import ClientNote
 from assistente.registro import configura_registro
+from assistente.strumenti import crea_orologio
 from tests.finti import ModelloFinto
 
 
@@ -113,6 +117,50 @@ def test_list_notes_con_argomento_nome_non_elimina(client, tmp_path):
 
     assert domande == []
     assert note_salvate(client) == ["meeting giovedì 4 alle 10"]
+
+
+def test_server_terminato_a_meta_sessione(monkeypatch, tmp_path):
+    # Si intercetta il processo del server (solo nel test) per poterlo terminare davvero.
+    processi = []
+    crea_processo = stdio_mcp._create_platform_compatible_process
+
+    async def crea_e_ricorda(*argomenti, **opzioni):
+        processo = await crea_processo(*argomenti, **opzioni)
+        processi.append(processo)
+        return processo
+
+    monkeypatch.setattr(stdio_mcp, "_create_platform_compatible_process", crea_e_ricorda)
+    adesso = datetime(2026, 11, 9, 10, 0, tzinfo=timezone.utc)
+    orologio = crea_orologio("Europe/Rome", adesso=lambda: adesso)
+
+    with ClientNote(tmp_path / "note.db", "Europe/Rome", tmp_path / "server_note.log") as client:
+        client.timeout = 5
+        asyncio.run_coroutine_threadsafe(
+            stdio_mcp._terminate_process_tree(processi[0], 1), client._loop
+        ).result(10)
+
+        modello = ModelloFinto(
+            [
+                AIMessage("", tool_calls=[richiesta("1", "list_notes", {})]),
+                AIMessage("", tool_calls=[richiesta("2", "orologio", {})]),
+                AIMessage("fatto"),
+            ]
+        )
+        grafo = costruisci_grafo(
+            modello,
+            strumenti=[orologio, *client.strumenti()],
+            registro=configura_registro(tmp_path / "a.log"),
+        )
+        esito = grafo.invoke({"messaggi": [HumanMessage("note e ora")], "chiamate_strumento": 0})
+
+    risultati = {m.tool_call_id: m.content for m in esito["messaggi"] if isinstance(m, ToolMessage)}
+    righe = (tmp_path / "a.log").read_text(encoding="utf-8").splitlines()
+
+    assert risultati["1"].startswith("Errore di collegamento:")
+    assert "2026-11-09 11:00" in risultati["2"]
+    assert esito["messaggi"][-1].content == "fatto"
+    assert "strumento=list_notes" in righe[0] and "esito=errore_collegamento" in righe[0]
+    assert "strumento=orologio" in righe[1] and "esito=ok" in righe[1]
 
 
 def test_testo_nota_con_client_chiuso(tmp_path):
