@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from langchain_core.tools import ToolException
 
+import assistente.client_mcp
 import assistente.note_mcp
 from assistente.note_mcp import ClientNote
 from assistente.strumenti import ErroreCollegamento
@@ -38,9 +39,10 @@ def test_discovery_dal_server(client, tmp_path):
         assert strumenti[nome].description == tool.description
         assert strumenti[nome].args_schema == tool.inputSchema
     assert "note_id" in strumenti["delete_note"].args_schema["required"]
-    sorgente = Path(assistente.note_mcp.__file__).read_text(encoding="utf-8")
-    for nome in ("add_note", "list_notes", "delete_note"):
-        assert nome not in sorgente
+    for modulo in (assistente.note_mcp, assistente.client_mcp):
+        sorgente = Path(modulo.__file__).read_text(encoding="utf-8")
+        for nome in ("add_note", "list_notes", "delete_note"):
+            assert nome not in sorgente
 
 
 def test_invocazione_diretta(client):
