@@ -1,6 +1,7 @@
 """Client MCP sincrono: avvia davvero il server delle note via stdio (nessun modello)."""
 
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -90,6 +91,22 @@ def test_dopo_chiusura_errore_di_collegamento(tmp_path):
 
     with pytest.raises(ErroreCollegamento):
         add.invoke({"text": "ciao"})
+
+
+def test_chiusura_in_timeout_senza_errori(tmp_path):
+    # Il thread del client resta occupato più del timeout: lo spegnimento non
+    # finisce in tempo, ma chiudi() non deve sollevare (niente traceback all'uscita).
+    client = nuovo_client(tmp_path)
+    client.apri()
+    client.timeout = 0.3
+    thread = client._thread
+    client._loop.call_soon_threadsafe(time.sleep, 2)
+
+    client.chiudi()
+
+    with pytest.raises(ErroreCollegamento):
+        client.chiama("list_notes", {})
+    thread.join(10)  # lascia finire lo spegnimento prima del prossimo test
 
 
 def test_avvio_fallito(tmp_path):

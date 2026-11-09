@@ -164,9 +164,15 @@ class ClientNote:
                     asyncio.run_coroutine_threadsafe(self._attendi_task(), loop).result(self.timeout)
                 except Exception:
                     pass
-            loop.call_soon_threadsafe(loop.stop)
-            self._thread.join(self.timeout)
-            loop.close()
+            try:
+                loop.call_soon_threadsafe(loop.stop)
+                self._thread.join(self.timeout)
+                # Se il thread è ancora attivo il loop gira: chiuderlo solleverebbe.
+                # Il thread è daemon e termina con il programma.
+                if not self._thread.is_alive():
+                    loop.close()
+            except Exception:
+                pass  # all'uscita uno spegnimento imperfetto non deve dare traceback
         if self._log is not None:
             self._log.close()
             self._log = None
