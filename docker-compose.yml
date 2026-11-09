@@ -7,9 +7,12 @@ services:
       # Nel container "localhost" è il container stesso: LM Studio è sull'host.
       LMSTUDIO_URL: "http://host.docker.internal:1234/v1"
       PERCORSO_LOG: "/app/logs/assistente.log"
+      # Archivio delle note: montato dall'host, così resta dopo il riavvio del container.
+      PERCORSO_NOTE: "/app/dati/note.db"
     stdin_open: true
     tty: true
     volumes:
       - ./logs:/app/logs
+      - ./dati:/app/dati
     extra_hosts:
       - "host.docker.internal:host-gateway"
