@@ -5,7 +5,9 @@ Il flusso della conversazione è un grafo LangGraph scritto a mano.
 
 Stato attuale: l'assistente conversa con un modello servito da LM Studio e ricorda la
 conversazione per la durata della sessione. Quando serve l'ora chiede lo strumento `orologio`,
-che il programma esegue davvero. Si avvia sia in locale sia con Docker Compose.
+che il programma esegue davvero. Può salvare, elencare ed eliminare **note persistenti** tramite
+un server MCP separato (`server_note/`); prima di ogni eliminazione chiede conferma nel
+terminale. Si avvia sia in locale sia con Docker Compose.
 
 ## Preparare l'ambiente (PowerShell)
 
@@ -13,10 +15,15 @@ che il programma esegue davvero. Si avvia sia in locale sia con Docker Compose.
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements-dev.txt
-python -c "import langgraph, langchain_openai, tzdata; print('ok')"
+python -m pip check
+python -c "import langgraph, langchain_openai, tzdata, fastmcp, mcp, langchain_mcp_adapters; print('ok')"
 ```
 
-L'ultimo comando deve stampare `ok`.
+`pip check` deve rispondere `No broken requirements found.` e l'ultimo comando stampare `ok`.
+
+Versioni MCP: `fastmcp==3.4.11`, `mcp==1.30.0`, `langchain-mcp-adapters==0.3.2`. fastmcp 4.x
+non è utilizzabile insieme all'adattatore LangChain, perché richiede `mcp` 2.x mentre
+`langchain-mcp-adapters` richiede `mcp` 1.x.
 
 ## Configurazione
 
@@ -29,6 +36,7 @@ L'assistente legge la configurazione solo da variabili d'ambiente:
 | `FUSO_PREDEFINITO` | no | fuso orario IANA predefinito (`Europe/Rome`) |
 | `LIMITE_CHIAMATE_STRUMENTO` | no | chiamate allo strumento per domanda (`5`) |
 | `PERCORSO_LOG` | no | file di log (`logs/assistente.log`) |
+| `PERCORSO_NOTE` | no | archivio SQLite delle note (`dati/note.db`) |
 
 `.env.example` contiene solo segnaposto (`URL_SERVER_LMSTUDIO`, `ID_NOME_MODELLO`): non va usato
 così com'è. Se l'app trova una variabile obbligatoria mancante o con il segnaposto, non parte e
@@ -88,7 +96,9 @@ Serve Docker Desktop avviato.
 non il computer. Per questo `docker-compose.yml` sostituisce `LMSTUDIO_URL` del `.env` con
 `http://host.docker.internal:1234/v1`, che dal container porta all'host. Lo stesso `.env` vale
 quindi per entrambi i modi di avvio. Anche `PERCORSO_LOG` è impostato da Compose: il log del
-container finisce nella cartella `logs\` dell'host.
+container finisce nella cartella `logs\` dell'host. Allo stesso modo `PERCORSO_NOTE` punta a
+`/app/dati/note.db`, cioè alla cartella `dati\` dell'host: le note restano anche dopo
+`docker compose run --rm`, e sono le stesse dell'avvio locale.
 
 Nel log le righe scritte dal container hanno l'orario in UTC, quelle dell'avvio locale l'orario
 del computer.
@@ -113,11 +123,46 @@ Ogni chiamata allo strumento viene scritta in `logs/assistente.log` (o in `PERCO
 nel terminale. Per vedere le ultime righe:
 
 ```powershell
-Get-Content logsssistente.log -Encoding utf8 -Tail 6
+Get-Content logs\assistente.log -Encoding utf8 -Tail 6
 ```
 
-Esempio di riga: `INFO passaggio=1 strumento=orologio argomenti={'fuso_orario': 'Asia/Tokyo'} risultato=...`;
-quando si raggiunge il limite compare una riga `WARNING limite raggiunto: ...`.
+Esempio di riga:
+`INFO passaggio=1 id=<tool_call_id> strumento=orologio argomenti={'fuso_orario': 'Asia/Tokyo'} esito=ok risultato=...`.
+`id` collega la riga alla richiesta del modello; `esito` vale `ok`, `annullata`,
+`errore_strumento`, `errore_collegamento`, `argomenti_non_validi` o `strumento_sconosciuto`.
+Per `delete_note` compare anche `conferma=si` o `conferma=no`. Quando si raggiunge il limite
+compare una riga `WARNING limite raggiunto: ...`.
+
+## Note persistenti (MCP)
+
+Le note sono gestite da un **server MCP** separato, scritto con FastMCP (`server_note/`), che
+le salva in SQLite (`dati/note.db`, fuori da Git). L'assistente lo avvia da solo come
+sottoprocesso e ci parla via stdio: non serve avviarlo a mano. All'avvio ne legge il catalogo
+(`tools/list`): nome, descrizione e schema dei tool vengono dal server, non sono riscritti
+nell'assistente. L'orologio invece resta una funzione locale.
+
+| Tool | Argomenti | Effetto |
+|---|---|---|
+| `add_note` | `text` (max 500 caratteri) | salva una nota; risponde con ID, data e testo |
+| `list_notes` | `limit` (1–100, predefinito 20) | elenca le note in ordine di creazione |
+| `delete_note` | `note_id` (preso da `list_notes`) | elimina definitivamente la nota |
+
+Esempi: «ricordami che ho un meeting giovedì 4 alle 10», «fammi vedere le note», «cancella la
+nota dell'appuntamento di giovedì 4».
+
+**Conferma.** Prima di eseguire `delete_note` il programma (non il modello) chiede nel terminale:
+
+```
+Eliminare la nota 1: «meeting giovedì 4 alle 10»? (s/n)
+```
+
+Elimina solo con `s`, `si` o `sì`; qualsiasi altra risposta annulla e il modello riceve
+`Eliminazione annullata dall'utente: nessuna nota è stata eliminata.`. Gli ID non vengono mai
+riutilizzati, quindi un numero vecchio non può cancellare una nota nuova.
+
+**Errori.** Il modello riceve testi diversi: `Errore dello strumento: Nessuna nota con ID 99.`
+(errore restituito dal server, nessun effetto) oppure `Errore di collegamento: ...` (server non
+raggiungibile). Gli avvisi del server vanno in `logs/server_note.log`, non nel terminale.
 
 ## Diagnosi
 
@@ -131,6 +176,17 @@ quando si raggiunge il limite compare una riga `WARNING limite raggiunto: ...`.
   risponde ma rifiuta la richiesta; controlla con il comando di `/v1/models` che il modello sia
   disponibile e che l'identificativo coincida, poi riprova.
 
+- `Impossibile avviare il server delle note (...)`: il sottoprocesso `python -m server_note`
+  non è partito. Controlla `logs\server_note.log` e che le dipendenze siano installate
+  (`python -m pip check`).
+- Le note non si comportano come previsto: diagnosi per livelli.
+  1. Il server risponde? `python -m pytest tests/test_server_note.py tests/test_note_mcp.py -q`
+     (catalogo, chiamata diretta ed errori, senza modello).
+  2. Il modello chiama il tool? Nel log cerca le righe con `strumento=add_note`,
+     `list_notes`, `delete_note`: se mancano, il modello ha risposto senza usare lo strumento.
+  3. L'esito è giusto? `esito=errore_strumento` è un rifiuto del server (es. ID inesistente);
+     `esito=errore_collegamento` indica che il server non risponde (riavvia l'assistente).
+  4. Il risultato è giusto ma la risposta no: è un problema di interpretazione del modello.
 - Docker: per controllare che il container raggiunga LM Studio sull'host:
 
   ```powershell
@@ -142,12 +198,12 @@ quando si raggiunge il limite compare una riga `WARNING limite raggiunto: ...`.
 - Docker: per controllare l'immagine senza modello:
 
   ```powershell
-  docker compose run --rm -T assistente python -c "from zoneinfo import ZoneInfo; ZoneInfo('Asia/Tokyo'); import assistente.grafo; print('ok')"
+  docker compose run --rm -T assistente python -c "from zoneinfo import ZoneInfo; ZoneInfo('Asia/Tokyo'); import assistente.grafo, assistente.note_mcp, server_note.server; print('ok')"
   docker compose run --rm -T assistente ls -a /app
   ```
 
-  Il primo stampa `ok`; il secondo elenca solo `assistente`, `logs` (la cartella del volume) e
-  `requirements.txt`.
+  Il primo stampa `ok`; il secondo elenca solo `assistente`, `server_note`, `dati` e `logs` (le
+  cartelle dei volumi) e `requirements.txt`.
 
 ## Test automatici
 
@@ -166,8 +222,16 @@ python -m pytest tests/test_reale_lmstudio.py -q
 Remove-Item Env:PROVA_LMSTUDIO
 ```
 
-La prova chiede «Che ore sono a Tokyo?» al modello vero e controlla che usi lo strumento con
-`Asia/Tokyo`. Il modello non è deterministico: conviene ripeterla più volte.
+La prova usa il modello vero (circa 2 minuti):
+- «Che ore sono a Tokyo?» → strumento `orologio` con `Asia/Tokyo`;
+- «Ricordami che ho un meeting giovedì 4 alle 10» → una sola `add_note`;
+- «Fammi vedere le note» → `list_notes` e la nota nella risposta;
+- «Cancella la nota dell'appuntamento di giovedì 4» → `list_notes` prima di `delete_note`,
+  archivio vuoto;
+- «Elimina la nota 99» → `delete_note` con errore dello strumento, nessuna nota eliminata.
+
+Le note usano un archivio temporaneo e la conferma è fissa (sì). Il modello non è
+deterministico: conviene ripeterla più volte.
 
 ## Verifica completa
 
@@ -184,13 +248,18 @@ Ordine delle prove per ricontrollare tutto da zero (PowerShell, nella cartella d
    python -m pytest -v
    ```
 
-   Esito atteso: `No broken requirements found.` e `30 passed, 1 skipped`.
+   Esito atteso: `No broken requirements found.` e `85 passed, 5 skipped`.
 2. LM Studio: elenco dei modelli (sezione «Configurazione»), prova reale con
    `PROVA_LMSTUDIO` (sezione «Test automatici», ripetuta più volte) e conversazione con
    `python -m assistente`: «che ore sono?», «e a Tokyo?», «di che cosa abbiamo parlato?»,
-   confrontando le ore con l'orologio di Windows e il file di log.
+   confrontando le ore con l'orologio di Windows e il file di log. Per le note, sempre con
+   `python -m assistente`: aggiungi due note, elencale, eliminane una rispondendo `s` alla
+   conferma e prova a eliminare l'altra rispondendo `n`; esci, riavvia e chiedi di nuovo le
+   note (deve esserci solo la seconda). Nel log controlla `conferma=si`/`conferma=no` ed `esito`.
 3. Docker: `docker compose build`, i due controlli dell'immagine (sezione «Diagnosi») e
-   `docker compose run --rm assistente` con una domanda sull'ora di Tokyo, poi `esci`.
+   `docker compose run --rm assistente` con una domanda sull'ora di Tokyo, poi `esci`. Poi
+   aggiungi una nota, esci, riavvia il container e chiedi le note: la nota deve esserci
+   (è in `dati\note.db` sull'host).
 
 Comportamento noto del modello `google/gemma-4-e2b`: usa correttamente lo strumento, ma spesso
 nomina il fuso `Europe/Rome` anche quando non serve.

@@ -5,10 +5,16 @@ La cartella del progetto è `repo-lab-llm/`.
 
 ## Struttura
 - `assistente/`: `config.py` (variabili d'ambiente), `modello.py` (LM Studio, istruzioni di
-  sistema), `strumenti.py` (orologio), `registro.py` (log su file), `grafo.py` (stato, nodi,
-  `instrada`), `terminale.py` (ciclo e cronologia), `__main__.py` (avvio).
-- `tests/`: test senza modello; `test_reale_lmstudio.py` è la prova reale.
-- `Dockerfile`, `docker-compose.yml`; `.env` locale (non versionato) da `.env.example`.
+  sistema), `strumenti.py` (orologio, `ErroreCollegamento`), `registro.py` (log su file),
+  `grafo.py` (stato, nodi, `instrada`, conferme), `note_mcp.py` (client MCP sincrono con
+  discovery), `conferma.py` (conferma `s/n` prima di `delete_note`), `terminale.py` (ciclo e
+  cronologia), `__main__.py` (avvio, insieme al server delle note).
+- `server_note/`: server MCP delle note (FastMCP, stdio): `archivio.py` (SQLite),
+  `server.py` (tool `add_note`, `list_notes`, `delete_note`), `__main__.py`.
+- `tests/`: test senza modello (il server delle note si avvia davvero via stdio);
+  `test_reale_lmstudio.py` è la prova reale.
+- `Dockerfile`, `docker-compose.yml`; `.env` locale (non versionato) da `.env.example`;
+  `dati/` (archivio delle note) e `logs/` non versionati.
 
 ## Comandi
 - Ambiente: `python -m venv .venv`, `.\.venv\Scripts\Activate.ps1`,
@@ -25,11 +31,16 @@ Un'applicazione da terminale in Python che conversa con un modello locale e:
 - conserva la cronologia della conversazione per la durata della sessione (nessuna persistenza);
 - offre uno strumento orologio con fuso orario esplicito, richiesto dal modello tramite tool calling
   ed eseguito davvero dal programma;
+- gestisce note persistenti tramite un server MCP separato (lezione 5), con conferma
+  dell'eliminazione chiesta dal programma;
 - si avvia anche con Docker Compose.
 
 ## Confini
-- Implementare solo i requisiti concordati. Altri strumenti, MCP, workflow e RAG arriveranno
-  nelle lezioni successive: non anticiparli.
+- Implementare solo i requisiti concordati. MCP è ammesso per le note (un solo server, stdio);
+  altri strumenti o server MCP, workflow e RAG arriveranno nelle lezioni successive: non
+  anticiparli.
+- Nome, descrizione e schema dei tool MCP stanno solo nel server: il client li ottiene con la
+  discovery, non li riscrive.
 - Niente interfacce grafiche, servizi cloud o framework non concordati.
 - Lavorare solo dentro `repo-lab-llm/`. La repository contiene altre lezioni:
   non leggerle per copiarne il codice e non modificarle.
