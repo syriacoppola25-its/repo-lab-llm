@@ -35,6 +35,7 @@ def esegui_sessione(
     della sessione va persa.
     """
     cronologia: list[BaseMessage] = []
+    riga_aperta = False  # c'è testo della risposta non ancora chiuso da un a capo
     try:
         while True:
             domanda = leggi(PROMPT).strip()
@@ -43,12 +44,14 @@ def esegui_sessione(
             if domanda.lower() == COMANDO_USCITA:
                 break
             scrivi(PENSANDO)
-            riga_aperta = False  # c'è testo della risposta non ancora chiuso da un a capo
             try:
                 for evento in risposta_in_streaming(grafo, cronologia + [HumanMessage(domanda)]):
                     if isinstance(evento, Testo):
                         if not evento.testo:
                             continue
+                        if evento.nuovo_tratto and riga_aperta:
+                            scrivi_pezzo("\n")
+                            riga_aperta = False
                         if not riga_aperta:
                             scrivi_pezzo(PREFISSO_RISPOSTA)
                             riga_aperta = True
@@ -74,5 +77,7 @@ def esegui_sessione(
                 )
                 continue
     except (KeyboardInterrupt, EOFError):
-        pass
+        # Ctrl+C a metà risposta: si chiude la riga aperta prima del saluto.
+        if riga_aperta:
+            scrivi_pezzo("\n")
     scrivi(SALUTO)

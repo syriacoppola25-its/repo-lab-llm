@@ -12,9 +12,14 @@ from langchain_core.messages import BaseMessage
 
 @dataclass(frozen=True)
 class Testo:
-    """Un pezzo di testo della risposta."""
+    """Un pezzo di testo della risposta.
+
+    `nuovo_tratto` è vero quando il testo non continua quello precedente (per esempio il
+    messaggio del limite di passaggi): chi lo mostra deve staccarlo da ciò che è già a schermo.
+    """
 
     testo: str
+    nuovo_tratto: bool = False
 
 
 @dataclass(frozen=True)
@@ -47,7 +52,7 @@ def risposta_in_streaming(grafo, messaggi: list[BaseMessage]) -> Iterator[Evento
         if modo == "values":
             stato = dato
         elif dato["tipo"] == "testo":
-            yield Testo(dato["testo"])
+            yield Testo(dato["testo"], dato.get("nuovo_tratto", False))
         elif dato["tipo"] == "strumento":
             yield Strumento(dato["nome"])
     yield Fine(stato["messaggi"])

@@ -383,5 +383,5 @@ def test_limite_scrive_testo_e_nessuno_strumento(tmp_path):
 
     eventi = eventi_di(grafo, "che ore sono?")
 
-    assert eventi[-1] == {"tipo": "testo", "testo": MESSAGGIO_LIMITE}
+    assert eventi[-1] == {"tipo": "testo", "testo": MESSAGGIO_LIMITE, "nuovo_tratto": True}
     assert len([e for e in eventi if e["tipo"] == "strumento"]) == 5

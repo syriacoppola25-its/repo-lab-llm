@@ -193,3 +193,23 @@ def test_messaggio_del_limite_come_risposta_normale():
     uscite, _ = avvia(["che ore sono?", "esci"], risposte, limite=1, **con_orologio())
 
     assert uscite[-2:] == [PREFISSO_RISPOSTA + MESSAGGIO_LIMITE, SALUTO]
+
+
+def test_limite_dopo_testo_del_modello_va_su_riga_sua():
+    risposte = [AIMessage("", tool_calls=[CHIAMATA]), AIMessage("Provo ancora", tool_calls=[CHIAMATA])]
+
+    uscite, _ = avvia(["che ore sono?", "esci"], risposte, limite=1, **con_orologio())
+
+    assert uscite[-3:] == [
+        PREFISSO_RISPOSTA + "Provo ancora",
+        PREFISSO_RISPOSTA + MESSAGGIO_LIMITE,
+        SALUTO,
+    ]
+
+
+def test_ctrl_c_a_meta_risposta_chiude_la_riga_prima_del_saluto():
+    modello = ModelloACopione([["uno ", KeyboardInterrupt()]])
+
+    uscite, _ = avvia(["ciao"], modello=modello)
+
+    assert uscite == [PENSANDO, PREFISSO_RISPOSTA + "uno ", SALUTO]

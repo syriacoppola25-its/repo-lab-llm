@@ -98,3 +98,18 @@ def test_errore_si_propaga_senza_fine():
             ricevuti.append(evento)
 
     assert not any(isinstance(e, flusso.Fine) for e in ricevuti)
+
+
+def test_limite_e_un_nuovo_tratto_di_testo():
+    richieste = [AIMessage("", tool_calls=[CHIAMATA]), AIMessage("Provo", tool_calls=[CHIAMATA])]
+    grafo = costruisci_grafo(
+        ModelloFinto(richieste),
+        strumenti=[crea_orologio("Europe/Rome", adesso=lambda: ISTANTE)],
+        limite=1,
+    )
+
+    eventi = list(flusso.risposta_in_streaming(grafo, [HumanMessage("che ore sono?")]))
+
+    testi = [e for e in eventi if isinstance(e, flusso.Testo)]
+    assert testi[-1].nuovo_tratto is True
+    assert all(not t.nuovo_tratto for t in testi[:-1])

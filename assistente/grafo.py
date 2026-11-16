@@ -193,7 +193,8 @@ def costruisci_grafo(
         chiusure = [
             ToolMessage("non eseguita: limite raggiunto", tool_call_id=r["id"]) for r in richieste
         ]
-        get_stream_writer()({"tipo": "testo", "testo": MESSAGGIO_LIMITE})
+        # Il messaggio del limite non viene dal modello: è un nuovo tratto di risposta.
+        get_stream_writer()({"tipo": "testo", "testo": MESSAGGIO_LIMITE, "nuovo_tratto": True})
         return {"messaggi": [*chiusure, AIMessage(MESSAGGIO_LIMITE)]}
 
     grafo = StateGraph(Stato)
