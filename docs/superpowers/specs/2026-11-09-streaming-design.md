@@ -123,8 +123,14 @@ Mie scelte (correggibili in revisione):
   dal nodo `strumenti` per l'evento strumento), non un meccanismo inventato da noi.
 - L'evento «strumento» nasce nel nodo `strumenti`, subito prima di eseguire ciascuna richiesta
   (anche quelle con argomenti non validi o strumento sconosciuto, che hanno comunque un nome),
-  così l'ordine rispetto alla conferma è garantito. Le richieste chiuse dal nodo `limite` non
-  generano l'evento: non vengono eseguite.
+  così l'evento precede la conferma. L'ordine di *stampa* rispetto alla domanda `s/n` non è
+  garantito (revisione del 2026-11-16): con lo streaming il nodo gira in un thread di lavoro mentre
+  il ciclo principale stampa la riga, e LangGraph non offre un punto di sincronizzazione; in
+  pratica la riga esce prima, perché la conferma legge prima la nota dal server. La soluzione
+  strutturale (conferma con `interrupt()` di LangGraph) è rimandata a quando ci sarà il frontend.
+  Le richieste chiuse dal nodo `limite` non generano l'evento: non vengono eseguite.
+- Il messaggio del limite è un «nuovo tratto» di testo (`Testo.nuovo_tratto`): il terminale lo
+  stacca da ciò che è già a schermo e lo mostra con il suo prefisso.
 - La funzione che produce gli eventi e i tipi di evento stanno in un modulo piccolo e nuovo
   (nome a scelta del costruttore), separato da `grafo.py` e da `terminale.py`.
 - `grafo.invoke` deve continuare a funzionare (i test esistenti del grafo lo usano).
