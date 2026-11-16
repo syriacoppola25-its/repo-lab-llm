@@ -12,6 +12,7 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from assistente.calcolatrice_mcp import ClientCalcolatrice
+from assistente import flusso
 from assistente.config import carica_config
 from assistente.grafo import costruisci_grafo
 from assistente.modello import crea_modello, istruzioni_sistema
@@ -164,3 +165,35 @@ def test_reale_percentuale(config, tmp_path, client, calcolatrice):
 
     assert "calculate" in chiamati
     assert "36" in risposta
+
+
+def eventi_reali(config, tmp_path, client, calcolatrice, domanda):
+    """Gli eventi dello streaming per una domanda al modello vero, con tutti gli strumenti."""
+    strumenti = [
+        crea_orologio(config.fuso_predefinito),
+        *client.strumenti(),
+        *calcolatrice.strumenti(),
+    ]
+    grafo = grafo_reale(config, tmp_path, strumenti)
+    return list(flusso.risposta_in_streaming(grafo, [HumanMessage(domanda)]))
+
+
+def test_reale_streaming_in_piu_pezzi(config, tmp_path, client, calcolatrice):
+    eventi = eventi_reali(
+        config, tmp_path, client, calcolatrice, "Rispondi in due frasi: che cos'è un grafo?"
+    )
+
+    pezzi = [e for e in eventi if isinstance(e, flusso.Testo)]
+    assert len(pezzi) >= 2, "la risposta non è arrivata a pezzi"
+    assert isinstance(eventi[-1], flusso.Fine)
+    assert "".join(e.testo for e in pezzi).strip() == eventi[-1].messaggi[-1].content.strip()
+
+
+def test_reale_streaming_con_calcolatrice(config, tmp_path, client, calcolatrice):
+    eventi = eventi_reali(config, tmp_path, client, calcolatrice, "Quanto fa 12 * 7?")
+
+    nomi = [e.nome for e in eventi if isinstance(e, flusso.Strumento)]
+    assert "calculate" in nomi
+    dopo = eventi[eventi.index(flusso.Strumento("calculate")) + 1 :]
+    assert any(isinstance(e, flusso.Testo) for e in dopo)
+    assert isinstance(eventi[-1], flusso.Fine)
