@@ -62,7 +62,11 @@ $env:LMSTUDIO_MODELLO = "google/gemma-4-e4b"
 python -m assistente
 ```
 
-- scrivi una domanda e premi Invio: compare `sto pensando…` e poi la risposta;
+- scrivi una domanda e premi Invio: compare `sto pensando…` e poi la risposta, che si vede
+  comparire **a pezzi** mentre il modello la scrive (streaming);
+- quando il programma esegue uno strumento compare una riga `Interrogando lo strumento <nome>…`
+  (per esempio `calculate`), una per ogni strumento; se il modello scrive del testo prima di
+  chiamare lo strumento, quel testo si vede e poi la risposta riprende dopo la riga;
 - le righe vuote vengono ignorate;
 - per uscire scrivi `esci` (anche in maiuscolo) oppure premi Ctrl+C.
 

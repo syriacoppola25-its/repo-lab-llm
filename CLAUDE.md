@@ -6,10 +6,11 @@ La cartella del progetto è `repo-lab-llm/`.
 ## Struttura
 - `assistente/`: `config.py` (variabili d'ambiente), `modello.py` (LM Studio, istruzioni di
   sistema), `strumenti.py` (orologio, `ErroreCollegamento`), `registro.py` (log su file),
-  `grafo.py` (stato, nodi, `instrada`, conferme), `client_mcp.py` (`ClientMCP`: client MCP
-  sincrono con discovery, uno per server), `note_mcp.py` (`ClientNote`), `calcolatrice_mcp.py`
+  `grafo.py` (stato, nodi, `instrada`, conferme; il nodo `modello` legge a pezzi e scrive
+  eventi), `flusso.py` (eventi `Testo`, `Strumento`, `Fine` e `risposta_in_streaming`),
+  `client_mcp.py` (`ClientMCP`: client MCP sincrono con discovery, uno per server), `note_mcp.py` (`ClientNote`), `calcolatrice_mcp.py`
   (`ClientCalcolatrice`), `conferma.py` (conferma `s/n` prima di `delete_note`), `terminale.py`
-  (ciclo e cronologia), `__main__.py` (avvio, insieme ai due server MCP).
+  (ciclo, cronologia, stampa degli eventi), `__main__.py` (avvio, insieme ai due server MCP).
 - `server_note/`: server MCP delle note (FastMCP, stdio): `archivio.py` (SQLite),
   `server.py` (tool `add_note`, `list_notes`, `delete_note`), `__main__.py`.
 - `server_calcolatrice/`: server MCP della calcolatrice (FastMCP, stdio): `valutatore.py`
@@ -36,6 +37,8 @@ Un'applicazione da terminale in Python che conversa con un modello locale e:
   ed eseguito davvero dal programma;
 - gestisce note persistenti tramite un server MCP separato (lezione 5), con conferma
   dell'eliminazione chiesta dal programma;
+- mostra le risposte in streaming, con una riga `Interrogando lo strumento <nome>…` quando
+  esegue uno strumento;
 - offre una calcolatrice sicura tramite un secondo server MCP (lezione 5): solo operazioni
   ammesse, rifiuto esplicito degli input non validi;
 - si avvia anche con Docker Compose.
