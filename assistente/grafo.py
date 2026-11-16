@@ -6,11 +6,20 @@
               └───────────────────┘
 """
 
+import json
 import logging
 from typing import Annotated, Callable, Literal, Mapping, Sequence, TypedDict
 
-from langchain_core.messages import AIMessage, AnyMessage, SystemMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    AIMessageChunk,
+    AnyMessage,
+    SystemMessage,
+    ToolMessage,
+    message_chunk_to_message,
+)
 from langchain_core.tools import BaseTool, ToolException
+from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
@@ -57,6 +66,38 @@ def instrada(stato: Stato, limite: int) -> Literal["strumenti", "limite", "fine"
     return "strumenti"
 
 
+def _ricomponi(totale: AIMessageChunk) -> AIMessage:
+    """Il messaggio intero dai pezzi ricevuti, con gli argomenti letti in modo rigoroso.
+
+    Ricomponendo i pezzi LangChain legge anche un JSON troncato (`{"a` diventa `{}`):
+    qui una chiamata con argomenti non leggibili resta tra le `invalid_tool_calls`,
+    come con una risposta intera, così lo strumento non parte con argomenti parziali.
+    """
+    validi, non_validi = [], []
+    for pezzo in totale.tool_call_chunks:
+        testo = pezzo["args"] or "{}"
+        try:
+            argomenti = json.loads(testo)
+        except ValueError:
+            argomenti = None
+        if isinstance(argomenti, dict):
+            validi.append(
+                {"name": pezzo["name"], "args": argomenti, "id": pezzo["id"], "type": "tool_call"}
+            )
+        else:
+            non_validi.append(
+                {
+                    "name": pezzo["name"],
+                    "args": testo,
+                    "id": pezzo["id"],
+                    "error": None,
+                    "type": "invalid_tool_call",
+                }
+            )
+    messaggio = message_chunk_to_message(totale)
+    return messaggio.model_copy(update={"tool_calls": validi, "invalid_tool_calls": non_validi})
+
+
 def _registro_muto() -> logging.Logger:
     """Logger che non scrive nulla, usato quando non ne viene passato uno."""
     registro = logging.getLogger("assistente.muto")
@@ -83,12 +124,21 @@ def costruisci_grafo(
     registro = registro or _registro_muto()
 
     def nodo_modello(stato: Stato) -> dict:
-        # Il modello legge tutta la conversazione e aggiunge la sua risposta.
+        # Il modello legge tutta la conversazione e aggiunge la sua risposta, che arriva
+        # a pezzi: ogni pezzo di testo esce subito come evento, e i pezzi ricomposti
+        # formano il messaggio intero per lo stato.
         # Le istruzioni di sistema vanno al modello ma non entrano nella cronologia.
         messaggi = stato["messaggi"]
         if istruzioni:
             messaggi = [SystemMessage(istruzioni), *messaggi]
-        return {"messaggi": [modello.invoke(messaggi)]}
+        scrivi = get_stream_writer()
+        totale = None
+        for pezzo in modello.stream(messaggi):
+            if isinstance(pezzo.content, str) and pezzo.content:
+                scrivi({"tipo": "testo", "testo": pezzo.content})
+            totale = pezzo if totale is None else totale + pezzo
+        risposta = AIMessage("") if totale is None else _ricomponi(totale)
+        return {"messaggi": [risposta]}
 
     def esegui(richiesta: dict) -> tuple[str, str, str]:
         """Esegue una richiesta: restituisce (testo per il modello, esito, nota di conferma)."""

@@ -267,3 +267,52 @@ def test_orologio_funziona_con_note_scollegate(tmp_path):
 
     assert risultati(esito)["1"] == "Errore di collegamento: server chiuso"
     assert risultati(esito)["2"].startswith("2026-10-26 23:00:00 Asia/Tokyo")
+
+
+def test_nodo_modello_scrive_testo_a_pezzi():
+    grafo = costruisci_grafo(ModelloFinto([AIMessage("uno due tre")]))
+
+    eventi = list(
+        grafo.stream(
+            {"messaggi": [HumanMessage("ciao")], "chiamate_strumento": 0}, stream_mode="custom"
+        )
+    )
+
+    assert len(eventi) > 1
+    assert all(e["tipo"] == "testo" for e in eventi)
+    assert "".join(e["testo"] for e in eventi) == "uno due tre"
+
+
+def test_stream_conserva_chiamate_a_strumenti(tmp_path):
+    modello = ModelloFinto(
+        [AIMessage("Ora calcolo", tool_calls=[chiamata("1")]), AIMessage("ok")]
+    )
+
+    esito = grafo_con_orologio(modello, tmp_path).invoke(
+        {"messaggi": [HumanMessage("che ore sono?")], "chiamate_strumento": 0}
+    )
+
+    risposta = esito["messaggi"][1]
+    assert risposta.content == "Ora calcolo"
+    assert risposta.tool_calls == [chiamata("1")]
+
+
+def test_stream_conserva_chiamate_non_leggibili(tmp_path):
+    malformata = {"name": "orologio", "args": "{non json", "id": "1", "error": "x"}
+    modello = ModelloFinto([AIMessage("", invalid_tool_calls=[malformata]), AIMessage("ok")])
+
+    esito = grafo_con_orologio(modello, tmp_path).invoke(
+        {"messaggi": [HumanMessage("che ore sono?")], "chiamate_strumento": 0}
+    )
+
+    assert isinstance(esito["messaggi"][2], ToolMessage)
+    assert esito["messaggi"][2].tool_call_id == "1"
+    assert esito["messaggi"][-1].content == "ok"
+
+
+def test_stream_risposta_vuota():
+    grafo = costruisci_grafo(ModelloFinto([AIMessage(""), AIMessage("")]))
+    stato = {"messaggi": [HumanMessage("ciao")], "chiamate_strumento": 0}
+
+    assert list(grafo.stream(stato, stream_mode="custom")) == []
+    assert grafo.invoke(stato)["messaggi"][-1].content == ""
