@@ -1,3 +1,4 @@
+import threading
 from datetime import datetime, timezone
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -316,3 +317,71 @@ def test_stream_risposta_vuota():
 
     assert list(grafo.stream(stato, stream_mode="custom")) == []
     assert grafo.invoke(stato)["messaggi"][-1].content == ""
+
+
+def eventi_di(grafo, domanda="ciao"):
+    """Gli eventi custom del grafo per una domanda, nell'ordine in cui arrivano."""
+    stato = {"messaggi": [HumanMessage(domanda)], "chiamate_strumento": 0}
+    return list(grafo.stream(stato, stream_mode="custom"))
+
+
+def test_evento_strumento_prima_del_risultato(tmp_path):
+    modello = ModelloFinto([AIMessage("", tool_calls=[chiamata("1")]), AIMessage("fatto")])
+
+    eventi = eventi_di(grafo_con_orologio(modello, tmp_path), "che ore sono?")
+
+    assert eventi[0] == {"tipo": "strumento", "nome": "orologio"}
+    assert [e["tipo"] for e in eventi[1:]] == ["testo"] * (len(eventi) - 1)
+    assert len(eventi) > 1
+
+
+def test_due_strumenti_due_eventi(tmp_path):
+    strumento, _ = finto_delete_note()
+    richieste = [chiamata("1"), elimina("2")]
+    modello = ModelloFinto([AIMessage("", tool_calls=richieste), AIMessage("ok")])
+
+    eventi = eventi_di(grafo_con_note(modello, tmp_path, strumento))
+
+    nomi = [e["nome"] for e in eventi if e["tipo"] == "strumento"]
+    assert nomi == ["orologio", "delete_note"]
+
+
+def test_evento_per_chiamata_non_leggibile(tmp_path):
+    malformata = {"name": "orologio", "args": "{fuso", "id": "1", "error": None}
+    modello = ModelloFinto([AIMessage("", invalid_tool_calls=[malformata]), AIMessage("ok")])
+
+    eventi = eventi_di(grafo_con_orologio(modello, tmp_path))
+
+    assert {"tipo": "strumento", "nome": "orologio"} in eventi
+
+
+def test_evento_strumento_arriva_mentre_la_conferma_e_in_attesa(tmp_path):
+    # La conferma blocca il nodo (nel terminale è un input()): l'evento dello strumento
+    # deve già essere arrivato a chi legge il flusso, non restare indietro fino alla fine.
+    strumento, ricevuti = finto_delete_note()
+    modello = ModelloFinto([AIMessage("", tool_calls=[elimina("1")]), AIMessage("annullata")])
+    arrivato = threading.Event()
+    visto_durante_la_conferma = []
+
+    def conferma(argomenti):
+        visto_durante_la_conferma.append(arrivato.wait(timeout=5))
+        return False
+
+    grafo = grafo_con_note(modello, tmp_path, strumento, {"delete_note": conferma})
+    stato = {"messaggi": [HumanMessage("cancella")], "chiamate_strumento": 0}
+    for evento in grafo.stream(stato, stream_mode="custom"):
+        if evento == {"tipo": "strumento", "nome": "delete_note"}:
+            arrivato.set()
+
+    assert visto_durante_la_conferma == [True]
+    assert ricevuti == []
+
+
+def test_limite_scrive_testo_e_nessuno_strumento(tmp_path):
+    richieste = [AIMessage("", tool_calls=[chiamata(str(i))]) for i in range(1, 7)]
+    grafo = grafo_con_orologio(ModelloFinto(richieste), tmp_path, limite=5)
+
+    eventi = eventi_di(grafo, "che ore sono?")
+
+    assert eventi[-1] == {"tipo": "testo", "testo": MESSAGGIO_LIMITE}
+    assert len([e for e in eventi if e["tipo"] == "strumento"]) == 5

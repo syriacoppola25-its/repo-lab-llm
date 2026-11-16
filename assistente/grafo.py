@@ -169,8 +169,11 @@ def costruisci_grafo(
         # Gli errori diventano testo per il modello, mai eccezioni.
         risultati = []
         passaggio = stato["chiamate_strumento"]
+        scrivi = get_stream_writer()
         for richiesta in _richieste(stato):
             passaggio += 1
+            # L'evento esce prima dell'esecuzione (e quindi prima di un'eventuale conferma).
+            scrivi({"tipo": "strumento", "nome": richiesta["name"]})
             testo, esito, conferma = esegui(richiesta)
             registro.info(
                 f"passaggio={passaggio} id={richiesta['id']} strumento={richiesta['name']} "
@@ -190,6 +193,7 @@ def costruisci_grafo(
         chiusure = [
             ToolMessage("non eseguita: limite raggiunto", tool_call_id=r["id"]) for r in richieste
         ]
+        get_stream_writer()({"tipo": "testo", "testo": MESSAGGIO_LIMITE})
         return {"messaggi": [*chiusure, AIMessage(MESSAGGIO_LIMITE)]}
 
     grafo = StateGraph(Stato)
