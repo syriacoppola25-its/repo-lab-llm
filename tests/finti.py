@@ -47,3 +47,35 @@ class ModelloFinto:
         ]
         if pezzi:
             yield AIMessageChunk("", tool_call_chunks=pezzi)
+
+
+def decisione(categoria: str, motivo: str = "motivo di prova") -> dict:
+    """Uscita del router come quella reale (`include_raw=True`) con una decisione leggibile."""
+    dati = {"categoria": categoria, "motivo": motivo}
+    return {"raw": AIMessage(json.dumps(dati)), "parsed": dati, "parsing_error": None}
+
+
+def illeggibile(testo: str = "non è json") -> dict:
+    """Uscita del router quando la risposta del modello non si legge come JSON."""
+    return {"raw": AIMessage(testo), "parsed": None, "parsing_error": ValueError("JSON non valido")}
+
+
+class RouterFinto:
+    """Router che restituisce (o solleva) le uscite preparate, una per invocazione.
+
+    Senza risposte preparate classifica sempre come `conversazione`.
+    Ogni lista di messaggi ricevuta viene salvata in `ricevuti`.
+    """
+
+    def __init__(self, risposte: list[dict | BaseException] | None = None):
+        self.risposte = None if risposte is None else list(risposte)
+        self.ricevuti: list[list[BaseMessage]] = []
+
+    def invoke(self, messaggi: list[BaseMessage]) -> dict:
+        self.ricevuti.append(list(messaggi))
+        if self.risposte is None:
+            return decisione("conversazione")
+        risposta = self.risposte.pop(0)
+        if isinstance(risposta, BaseException):
+            raise risposta
+        return risposta
