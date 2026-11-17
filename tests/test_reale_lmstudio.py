@@ -18,7 +18,7 @@ from assistente.grafo import costruisci_grafo
 from assistente.modello import crea_modello, istruzioni_sistema
 from assistente.note_mcp import ClientNote
 from assistente.registro import configura_registro
-from assistente.router import crea_router
+from assistente.router import MESSAGGIO_RIFIUTO, crea_router
 from assistente.strumenti import crea_orologio
 
 pytestmark = pytest.mark.skipif(
@@ -183,7 +183,11 @@ def eventi_reali(config, tmp_path, client, calcolatrice, domanda):
 
 def test_reale_streaming_in_piu_pezzi(config, tmp_path, client, calcolatrice):
     eventi = eventi_reali(
-        config, tmp_path, client, calcolatrice, "Rispondi in due frasi: che cos'è un grafo?"
+        config,
+        tmp_path,
+        client,
+        calcolatrice,
+        "Rispondi in due frasi: che cos'è l'ordine del giorno di una riunione?",
     )
 
     pezzi = [e for e in eventi if isinstance(e, flusso.Testo)]
@@ -200,3 +204,36 @@ def test_reale_streaming_con_calcolatrice(config, tmp_path, client, calcolatrice
     dopo = eventi[eventi.index(flusso.Strumento("calculate")) + 1 :]
     assert any(isinstance(e, flusso.Testo) for e in dopo)
     assert isinstance(eventi[-1], flusso.Fine)
+
+
+def classifica(config, tmp_path, client, calcolatrice, domanda):
+    """Una domanda al grafo reale (router compreso); restituisce (testo del log, risposta)."""
+    _, risposta = chiedi(config, tmp_path, client, calcolatrice, domanda)
+    return (tmp_path / "assistente.log").read_text(encoding="utf-8"), risposta
+
+
+def test_reale_router_in_ambito(config, tmp_path, client, calcolatrice):
+    log, _ = classifica(
+        config, tmp_path, client, calcolatrice,
+        "Scrivimi una breve mail per spostare la riunione di domani alle 15",
+    )
+
+    assert "categoria=conversazione" in log and "prossimo=agente" in log
+    assert "nodo=agente" in log
+
+
+def test_reale_router_fuori_ambito(config, tmp_path, client, calcolatrice):
+    log, risposta = classifica(
+        config, tmp_path, client, calcolatrice, "Chi ha vinto l'ultima partita di Serie A?"
+    )
+
+    assert "categoria=fuori_ambito" in log and "prossimo=rifiuto" in log
+    assert "nodo=agente" not in log
+    assert risposta == MESSAGGIO_RIFIUTO
+
+
+def test_reale_router_ricetta_fuori_ambito(config, tmp_path, client, calcolatrice):
+    log, risposta = classifica(config, tmp_path, client, calcolatrice, "Come si prepara la carbonara?")
+
+    assert "categoria=fuori_ambito" in log and "nodo=agente" not in log
+    assert risposta == MESSAGGIO_RIFIUTO
