@@ -6,8 +6,10 @@ La cartella del progetto è `repo-lab-llm/`.
 ## Struttura
 - `assistente/`: `config.py` (variabili d'ambiente), `modello.py` (LM Studio, istruzioni di
   sistema), `strumenti.py` (orologio, `ErroreCollegamento`), `registro.py` (log su file),
-  `grafo.py` (stato, nodi, `instrada`, conferme; il nodo `modello` legge a pezzi e scrive
-  eventi), `flusso.py` (eventi `Testo`, `Strumento`, `Fine` e `risposta_in_streaming`),
+  `router.py` (ambito d'ufficio: schema, istruzioni e controllo della decisione del router,
+  messaggi di rifiuto e riformula), `grafo.py` (stato, nodi `router`/`agente`/`strumenti`/
+  `limite`/`rifiuto`/`riformula`, `instrada_router`, `instrada`, conferme; il nodo `agente`
+  legge a pezzi e scrive eventi), `flusso.py` (eventi `Testo`, `Strumento`, `Fine` e `risposta_in_streaming`),
   `client_mcp.py` (`ClientMCP`: client MCP sincrono con discovery, uno per server), `note_mcp.py` (`ClientNote`), `calcolatrice_mcp.py`
   (`ClientCalcolatrice`), `conferma.py` (conferma `s/n` prima di `delete_note`), `terminale.py`
   (ciclo, cronologia, stampa degli eventi), `__main__.py` (avvio, insieme ai due server MCP).
@@ -41,6 +43,8 @@ Un'applicazione da terminale in Python che conversa con un modello locale e:
   esegue uno strumento;
 - offre una calcolatrice sicura tramite un secondo server MCP (lezione 5): solo operazioni
   ammesse, rifiuto esplicito degli input non validi;
+- è un assistente d'ufficio: un nodo router con output strutturato (`categoria`, `motivo`)
+  manda le domande in ambito all'agente e quelle fuori ambito a un nodo di rifiuto;
 - si avvia anche con Docker Compose.
 
 ## Confini

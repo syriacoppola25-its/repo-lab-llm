@@ -8,8 +8,10 @@ conversazione per la durata della sessione. Quando serve l'ora chiede lo strumen
 che il programma esegue davvero. Può salvare, elencare ed eliminare **note persistenti** tramite
 un server MCP separato (`server_note/`); prima di ogni eliminazione chiede conferma nel
 terminale. Fa i conti con una **calcolatrice sicura** offerta da un secondo server MCP
-(`server_calcolatrice/`), che rifiuta in modo esplicito ogni input non ammesso. Si avvia sia in
-locale sia con Docker Compose.
+(`server_calcolatrice/`), che rifiuta in modo esplicito ogni input non ammesso. È un
+**assistente d'ufficio**: un nodo **router** controlla prima di tutto se la domanda rientra
+nell'ambito e rifiuta le altre senza interpellare l'agente. Si avvia sia in locale sia con
+Docker Compose.
 
 ## Preparare l'ambiente (PowerShell)
 
@@ -137,7 +139,8 @@ Esempio di riga:
 `id` collega la riga alla richiesta del modello; `esito` vale `ok`, `annullata`,
 `errore_strumento`, `errore_collegamento`, `argomenti_non_validi` o `strumento_sconosciuto`.
 Per `delete_note` compare anche `conferma=si` o `conferma=no`. Quando si raggiunge il limite
-compare una riga `WARNING limite raggiunto: ...`.
+compare una riga `WARNING limite raggiunto: ...`. Nello stesso file compaiono le righe del
+router e una riga `nodo=agente` a ogni esecuzione dell'agente (sezione «Router dell'ambito»).
 
 ## Note persistenti (MCP)
 
@@ -196,7 +199,40 @@ Ogni altro input è rifiutato con un errore che dice che cosa non va, per esempi
 riferire l'errore, non inventare un risultato. Gli avvisi del server vanno in
 `logs/server_calcolatrice.log`.
 
+## Router dell'ambito
+
+L'assistente è un **assistente d'ufficio**. Prima dell'agente (modello + strumenti) un nodo
+`router` chiede allo stesso modello di LM Studio, senza strumenti, di classificare l'ultima
+domanda con un output strutturato (schema JSON): `categoria` (`conversazione` o
+`fuori_ambito`) e `motivo`. Il router non decide gli strumenti: lo fa l'agente, come prima.
+
+- **In ambito** (`conversazione` → agente): data e ora, note, calcoli, mail, testi, riassunti,
+  organizzazione di giornata, riunioni e scadenze, termini di lavoro, saluti e seguiti.
+- **Fuori ambito** (`fuori_ambito` → rifiuto): sport, gossip, fantasia, consigli medici, ricette
+  e tutto ciò che non riguarda il lavoro d'ufficio. La risposta è fissa:
+  `Mi dispiace, posso aiutarti solo con il lavoro d'ufficio (mail, testi, organizzazione, note, orari, calcoli).`
+- **Risposta del router non leggibile** (JSON storto, categoria sconosciuta, motivo vuoto):
+  l'assistente chiede `Non ho capito bene la richiesta: puoi riformularla?`.
+
+Domanda e risposta di rifiuto restano nella cronologia della sessione. Righe di log reali
+(`google/gemma-4-e4b`):
+
+```
+INFO router categoria=conversazione motivo=Lavoro d'ufficio come scrivere o rivedere mail e organizzare riunioni. prossimo=agente
+INFO nodo=agente
+INFO router categoria=fuori_ambito motivo=Si tratta di informazioni sportive non relative al contesto lavorativo. prossimo=rifiuto
+INFO router categoria=fuori_ambito motivo=Domanda su ricette di cucina. prossimo=rifiuto
+```
+
+Per una domanda fuori ambito non compare nessuna riga `nodo=agente`. Una risposta illeggibile
+produce una riga `WARNING router risposta non leggibile risposta=... prossimo=riformula`.
+
 ## Diagnosi
+
+- Una domanda d'ufficio viene rifiutata (o viceversa): nel log guarda la riga `router` con
+  `categoria` e `motivo`; la classificazione è del modello, le istruzioni sono in
+  `assistente/router.py`. I test senza modello del router:
+  `python -m pytest tests/test_router.py tests/test_grafo_router.py -q`.
 
 - `Variabile d'ambiente LMSTUDIO_URL mancante. Vedi .env.example.`: le variabili non sono
   impostate in questa finestra di PowerShell (valgono solo per la finestra in cui le imposti).
@@ -260,8 +296,8 @@ python -m pytest tests/test_reale_lmstudio.py -q
 Remove-Item Env:PROVA_LMSTUDIO
 ```
 
-La prova usa il modello vero (con `google/gemma-4-e4b` circa 6 minuti) e gli lega tutti gli
-strumenti (orologio, note, calcolatrice):
+La prova usa il modello vero (con `google/gemma-4-e4b` circa 14 minuti), passa ogni domanda
+dal router e lega all'agente tutti gli strumenti (orologio, note, calcolatrice):
 - «Che ore sono a Tokyo?» → strumento `orologio` con `Asia/Tokyo`;
 - «Ricordami che ho un meeting giovedì 4 alle 10» → una sola `add_note`;
 - «Fammi vedere le note» → `list_notes` e la nota nella risposta;
@@ -270,7 +306,13 @@ strumenti (orologio, note, calcolatrice):
 - «Elimina la nota 99» → `delete_note` con errore dello strumento, nessuna nota eliminata;
 - «Quanto fa (12,5 + 7) * 3?» → `calculate` e 58.5 nella risposta;
 - «Quanto fa 10 diviso 0?» → `calculate` con errore dello strumento riferito;
-- «Quanto è il 15% di 240?» → `calculate` e 36 nella risposta.
+- «Quanto è il 15% di 240?» → `calculate` e 36 nella risposta;
+- «Scrivimi una breve mail per spostare la riunione di domani alle 15» → router
+  `categoria=conversazione`, `prossimo=agente` e `nodo=agente` nel log;
+- «Chi ha vinto l'ultima partita di Serie A?» e «Come si prepara la carbonara?» → router
+  `categoria=fuori_ambito`, messaggio di rifiuto, nessuna riga `nodo=agente`.
+
+Anche le prove di streaming passano dal router, quindi usano domande in ambito.
 
 Le note usano un archivio temporaneo e la conferma è fissa (sì). Il modello non è
 deterministico: conviene ripeterla più volte.
@@ -290,7 +332,7 @@ Ordine delle prove per ricontrollare tutto da zero (PowerShell, nella cartella d
    python -m pytest -v
    ```
 
-   Esito atteso: `No broken requirements found.` e `174 passed, 8 skipped`.
+   Esito atteso: `No broken requirements found.` e `224 passed, 13 skipped`.
 2. LM Studio: elenco dei modelli (sezione «Configurazione»), prova reale con
    `PROVA_LMSTUDIO` (sezione «Test automatici», ripetuta più volte) e conversazione con
    `python -m assistente`: «che ore sono?», «e a Tokyo?», «di che cosa abbiamo parlato?»,
@@ -306,7 +348,7 @@ Ordine delle prove per ricontrollare tutto da zero (PowerShell, nella cartella d
    `esito=errore_strumento`.
 
 Modello di riferimento: `google/gemma-4-e4b` (indicazione del corso), con cui la prova reale
-passa 8/8. Il modello più piccolo `google/gemma-4-e2b` passa 7/8: con «Quanto fa 10 diviso 0?»
+passa 13/13 (misurato con il router). Il modello più piccolo `google/gemma-4-e2b` passa 7/8: con «Quanto fa 10 diviso 0?»
 spesso risponde a memoria o scrive la chiamata come testo
 (`calculate{expression:<|"|>10 / 0<|"|>}`) invece di chiamare lo strumento; inoltre nomina il
 fuso `Europe/Rome` anche quando non serve.
@@ -316,25 +358,33 @@ fuso `Europe/Rome` anche quando non serve.
 LangGraph descrive il programma come un grafo:
 
 - **stato** (`Stato` in `assistente/grafo.py`): i dati che passano da un nodo all'altro, cioè la
-  lista dei messaggi della conversazione e il numero di chiamate allo strumento;
+  lista dei messaggi della conversazione, il numero di chiamate allo strumento e la decisione
+  del router;
 - **nodo**: una funzione che riceve lo stato e restituisce le modifiche da applicare (per esempio
-  il nodo `modello` aggiunge la risposta del modello ai messaggi);
+  il nodo `agente` aggiunge la risposta del modello ai messaggi);
 - **arco**: il collegamento che dice quale nodo viene eseguito dopo. Un **arco condizionale**
   sceglie il nodo successivo in base allo stato.
 
 Il grafo dell'assistente (`costruisci_grafo` in `assistente/grafo.py`):
 
 ```
-START → modello ──fine──────→ END
-          ↑  │ ──limite──→ limite → END
-          │  └─strumenti─→ strumenti
-          └───────────────────┘
+START → router ──conversazione──→ agente ──fine──────→ END
+           │                        ↑  │ ──limite──→ limite → END
+           │                        │  └─strumenti─→ strumenti
+           │                        └───────────────────┘
+           ├──fuori_ambito──→ rifiuto ──→ END
+           └──non_leggibile─→ riformula ─→ END
 ```
 
-- `modello`: manda al modello le istruzioni di sistema (non salvate nella cronologia) e la
+- `router`: classifica l'ultima domanda (una volta per domanda) e scrive nel log categoria,
+  motivo e nodo successivo;
+- `instrada_router` (arco condizionale): `conversazione` → `agente`; `fuori_ambito` →
+  `rifiuto`; risposta non leggibile → `riformula`;
+- `rifiuto` / `riformula`: rispondono con il messaggio fisso, che entra nella cronologia;
+- `agente`: manda al modello le istruzioni di sistema (non salvate nella cronologia) e la
   conversazione, e aggiunge la risposta;
 - `instrada` (arco condizionale): se la risposta non chiede strumenti → `END`; se li chiede e il
   limite non è superato → `strumenti`; altrimenti → `limite`;
 - `strumenti`: esegue ogni chiamata richiesta, aggiunge un risultato per ciascuna e torna a
-  `modello`;
+  `agente` (non al router);
 - `limite`: chiude le chiamate rimaste senza esito e risponde con il messaggio di limite.
