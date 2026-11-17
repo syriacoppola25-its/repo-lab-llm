@@ -18,6 +18,7 @@ from assistente.grafo import costruisci_grafo
 from assistente.modello import crea_modello, istruzioni_sistema
 from assistente.note_mcp import ClientNote
 from assistente.registro import configura_registro
+from assistente.router import crea_router
 from assistente.strumenti import crea_orologio
 
 pytestmark = pytest.mark.skipif(
@@ -53,6 +54,7 @@ def grafo_reale(config, tmp_path, strumenti):
         limite=config.limite_chiamate,
         registro=configura_registro(tmp_path / "assistente.log"),
         conferme={"delete_note": lambda argomenti: True},
+        router=crea_router(config),
     )
 
 
@@ -87,6 +89,7 @@ def test_modello_reale_usa_orologio(config, tmp_path):
         strumenti=[orologio],
         limite=config.limite_chiamate,
         registro=configura_registro(tmp_path / "assistente.log"),
+        router=crea_router(config),
     )
 
     esito = grafo.invoke(

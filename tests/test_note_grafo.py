@@ -15,7 +15,7 @@ from assistente.modello import istruzioni_sistema
 from assistente.note_mcp import ClientNote
 from assistente.registro import configura_registro
 from assistente.strumenti import crea_orologio
-from tests.finti import ModelloFinto
+from tests.finti import ModelloFinto, RouterFinto
 
 
 @pytest.fixture
@@ -50,6 +50,7 @@ def elimina_descrivendo(client, tmp_path, risposta, note_id=1):
         strumenti=client.strumenti(),
         conferme={"delete_note": conferma},
         registro=configura_registro(tmp_path / "a.log"),
+        router=RouterFinto(),
     )
     esito = grafo.invoke(
         {"messaggi": [HumanMessage("cancella la nota del meeting")], "chiamate_strumento": 0}
@@ -112,6 +113,7 @@ def test_list_notes_con_argomento_nome_non_elimina(client, tmp_path):
         strumenti=client.strumenti(),
         conferme={"delete_note": conferma},
         registro=configura_registro(tmp_path / "a.log"),
+        router=RouterFinto(),
     )
     grafo.invoke({"messaggi": [HumanMessage("mostra le note")], "chiamate_strumento": 0})
 
@@ -150,11 +152,13 @@ def test_server_terminato_a_meta_sessione(monkeypatch, tmp_path):
             modello,
             strumenti=[orologio, *client.strumenti()],
             registro=configura_registro(tmp_path / "a.log"),
+            router=RouterFinto(),
         )
         esito = grafo.invoke({"messaggi": [HumanMessage("note e ora")], "chiamate_strumento": 0})
 
     risultati = {m.tool_call_id: m.content for m in esito["messaggi"] if isinstance(m, ToolMessage)}
-    righe = (tmp_path / "a.log").read_text(encoding="utf-8").splitlines()
+    # Solo le righe degli strumenti (il log contiene anche router e agente).
+    righe = [r for r in (tmp_path / "a.log").read_text(encoding="utf-8").splitlines() if " strumento=" in r]
 
     assert risultati["1"].startswith("Errore di collegamento:")
     assert "2026-11-09 11:00" in risultati["2"]

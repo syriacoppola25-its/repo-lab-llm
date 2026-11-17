@@ -1,9 +1,11 @@
 """Il grafo LangGraph: stato, nodi e collegamenti tra i nodi.
 
-    START → modello ──fine──────→ END
-              ↑  │ ──limite──→ limite → END
-              │  └─strumenti─→ strumenti
-              └───────────────────┘
+    START → router ──conversazione──→ agente ──fine──────→ END
+               │                        ↑  │ ──limite──→ limite → END
+               │                        │  └─strumenti─→ strumenti
+               │                        └───────────────────┘
+               ├──fuori_ambito──→ rifiuto ──→ END
+               └──non_leggibile─→ riformula ─→ END
 """
 
 import json
@@ -23,6 +25,14 @@ from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
+from assistente.router import (
+    MESSAGGIO_RIFIUTO,
+    MESSAGGIO_RIFORMULA,
+    istruzioni_router,
+    leggi_decisione,
+    messaggi_per_router,
+    risposta_grezza,
+)
 from assistente.strumenti import ErroreCollegamento
 
 MESSAGGIO_LIMITE = (
@@ -38,10 +48,12 @@ class Stato(TypedDict):
     `messaggi` usa `add_messages`: quando un nodo restituisce nuovi messaggi,
     vengono aggiunti in coda invece di sostituire la lista.
     `chiamate_strumento` conta gli strumenti eseguiti per la domanda corrente.
+    `decisione` è la decisione del router (`categoria`, `motivo`), None se non leggibile.
     """
 
     messaggi: Annotated[list[AnyMessage], add_messages]
     chiamate_strumento: int
+    decisione: dict | None
 
 
 def _richieste(stato: Stato) -> list[dict]:
@@ -56,8 +68,18 @@ def _richieste(stato: Stato) -> list[dict]:
     return [*ultimo.tool_calls, *ultimo.invalid_tool_calls]
 
 
+def instrada_router(stato: Stato) -> Literal["agente", "rifiuto", "riformula"]:
+    """Sceglie il nodo dopo `router`: agente, rifiuto o richiesta di riformulare."""
+    decisione = stato["decisione"]
+    if decisione is None:
+        return "riformula"
+    if decisione["categoria"] == "conversazione":
+        return "agente"
+    return "rifiuto"
+
+
 def instrada(stato: Stato, limite: int) -> Literal["strumenti", "limite", "fine"]:
-    """Sceglie il nodo dopo `modello`: risposta finale, strumenti o stop per limite."""
+    """Sceglie il nodo dopo `agente`: risposta finale, strumenti o stop per limite."""
     richieste = _richieste(stato)
     if not richieste:
         return "fine"
@@ -114,16 +136,54 @@ def costruisci_grafo(
     limite: int = 5,
     registro: logging.Logger | None = None,
     conferme: Mapping[str, Callable[[dict], bool]] = {},
+    *,
+    router,
 ):
-    """Costruisce il grafo con i nodi `modello`, `strumenti` e `limite`.
+    """Costruisce il grafo con i nodi `router`, `agente`, `strumenti`, `limite`,
+    `rifiuto` e `riformula`.
 
+    `router` classifica la domanda: riceve una lista di messaggi e restituisce l'uscita
+    di `with_structured_output(..., include_raw=True)` (vedi `assistente.router`).
     `conferme` associa al nome di uno strumento una funzione che riceve gli
     argomenti e decide se eseguirlo (per esempio chiedendo all'utente).
     """
     per_nome = {s.name: s for s in strumenti}
     registro = registro or _registro_muto()
 
-    def nodo_modello(stato: Stato) -> dict:
+    def nodo_router(stato: Stato) -> dict:
+        # Classifica l'ultima domanda; non va in streaming e non sceglie strumenti.
+        # Gli errori di collegamento (o HTTP) risalgono; solo una risposta illeggibile
+        # porta a `riformula`.
+        uscita = router.invoke(
+            [SystemMessage(istruzioni_router()), *messaggi_per_router(stato["messaggi"])]
+        )
+        decisione = leggi_decisione(uscita)
+        if decisione is None:
+            registro.warning(
+                f"router risposta non leggibile risposta={risposta_grezza(uscita)[:200]} "
+                "prossimo=riformula"
+            )
+        else:
+            prossimo = "agente" if decisione["categoria"] == "conversazione" else "rifiuto"
+            registro.info(
+                f"router categoria={decisione['categoria']} motivo={decisione['motivo']} "
+                f"prossimo={prossimo}"
+            )
+        return {"decisione": decisione}
+
+    def risposta_fissa(testo: str) -> dict:
+        # Il messaggio esce come testo in streaming ed entra nella cronologia.
+        get_stream_writer()({"tipo": "testo", "testo": testo})
+        return {"messaggi": [AIMessage(testo)]}
+
+    def nodo_rifiuto(stato: Stato) -> dict:
+        return risposta_fissa(MESSAGGIO_RIFIUTO)
+
+    def nodo_riformula(stato: Stato) -> dict:
+        return risposta_fissa(MESSAGGIO_RIFORMULA)
+
+    def nodo_agente(stato: Stato) -> dict:
+        registro.info("nodo=agente")
         # Il modello legge tutta la conversazione e aggiunge la sua risposta, che arriva
         # a pezzi: ogni pezzo di testo esce subito come evento, e i pezzi ricomposti
         # formano il messaggio intero per lo stato.
@@ -198,15 +258,25 @@ def costruisci_grafo(
         return {"messaggi": [*chiusure, AIMessage(MESSAGGIO_LIMITE)]}
 
     grafo = StateGraph(Stato)
-    grafo.add_node("modello", nodo_modello)
+    grafo.add_node("router", nodo_router)
+    grafo.add_node("agente", nodo_agente)
     grafo.add_node("strumenti", nodo_strumenti)
     grafo.add_node("limite", nodo_limite)
-    grafo.add_edge(START, "modello")
+    grafo.add_node("rifiuto", nodo_rifiuto)
+    grafo.add_node("riformula", nodo_riformula)
+    grafo.add_edge(START, "router")
     grafo.add_conditional_edges(
-        "modello",
+        "router",
+        instrada_router,
+        {"agente": "agente", "rifiuto": "rifiuto", "riformula": "riformula"},
+    )
+    grafo.add_conditional_edges(
+        "agente",
         lambda stato: instrada(stato, limite),
         {"strumenti": "strumenti", "limite": "limite", "fine": END},
     )
-    grafo.add_edge("strumenti", "modello")
+    grafo.add_edge("strumenti", "agente")
     grafo.add_edge("limite", END)
+    grafo.add_edge("rifiuto", END)
+    grafo.add_edge("riformula", END)
     return grafo.compile()

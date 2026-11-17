@@ -7,7 +7,7 @@ from langchain_core.tools import StructuredTool, ToolException
 from assistente.grafo import MESSAGGIO_ANNULLATA, MESSAGGIO_LIMITE, costruisci_grafo, instrada
 from assistente.registro import configura_registro
 from assistente.strumenti import ErroreCollegamento, crea_orologio
-from tests.finti import ModelloFinto
+from tests.finti import ModelloFinto, RouterFinto
 
 ISTANTE = datetime(2026, 10, 26, 14, 0, tzinfo=timezone.utc)
 
@@ -23,6 +23,7 @@ def grafo_con_orologio(modello, tmp_path, limite=5):
         strumenti=[crea_orologio("Europe/Rome", adesso=lambda: ISTANTE)],
         limite=limite,
         registro=configura_registro(tmp_path / "a.log"),
+        router=RouterFinto(),
     )
 
 
@@ -35,7 +36,7 @@ def avvia_fino_al_limite(tmp_path):
 def test_grafo_risponde_con_il_modello():
     modello = ModelloFinto([AIMessage("ciao")])
 
-    esito = costruisci_grafo(modello).invoke(
+    esito = costruisci_grafo(modello, router=RouterFinto()).invoke(
         {"messaggi": [HumanMessage("salve")], "chiamate_strumento": 0}
     )
 
@@ -45,7 +46,7 @@ def test_grafo_risponde_con_il_modello():
 def test_istruzioni_inviate_ma_non_salvate():
     modello = ModelloFinto([AIMessage("ciao")])
 
-    esito = costruisci_grafo(modello, istruzioni="ISTR").invoke(
+    esito = costruisci_grafo(modello, istruzioni="ISTR", router=RouterFinto()).invoke(
         {"messaggi": [HumanMessage("salve")], "chiamate_strumento": 0}
     )
 
@@ -170,6 +171,7 @@ def grafo_con_note(modello, tmp_path, strumento, conferme={}):
         strumenti=[crea_orologio("Europe/Rome", adesso=lambda: ISTANTE), strumento],
         conferme=conferme,
         registro=configura_registro(tmp_path / "a.log"),
+        router=RouterFinto(),
     )
 
 
@@ -271,7 +273,7 @@ def test_orologio_funziona_con_note_scollegate(tmp_path):
 
 
 def test_nodo_modello_scrive_testo_a_pezzi():
-    grafo = costruisci_grafo(ModelloFinto([AIMessage("uno due tre")]))
+    grafo = costruisci_grafo(ModelloFinto([AIMessage("uno due tre")]), router=RouterFinto())
 
     eventi = list(
         grafo.stream(
@@ -312,7 +314,7 @@ def test_stream_conserva_chiamate_non_leggibili(tmp_path):
 
 
 def test_stream_risposta_vuota():
-    grafo = costruisci_grafo(ModelloFinto([AIMessage(""), AIMessage("")]))
+    grafo = costruisci_grafo(ModelloFinto([AIMessage(""), AIMessage("")]), router=RouterFinto())
     stato = {"messaggi": [HumanMessage("ciao")], "chiamate_strumento": 0}
 
     assert list(grafo.stream(stato, stream_mode="custom")) == []

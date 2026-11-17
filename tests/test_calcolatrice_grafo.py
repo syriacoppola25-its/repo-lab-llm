@@ -8,7 +8,7 @@ from assistente.grafo import costruisci_grafo
 from assistente.modello import istruzioni_sistema
 from assistente.note_mcp import ClientNote
 from assistente.registro import configura_registro
-from tests.finti import ModelloFinto
+from tests.finti import ModelloFinto, RouterFinto
 
 
 def richiesta(id, nome, argomenti):
@@ -25,11 +25,13 @@ def esegui(tmp_path, strumenti, richieste, risposta="fatto"):
     """Il modello finto chiede `richieste` in un solo turno, poi risponde `risposta`."""
     modello = ModelloFinto([AIMessage("", tool_calls=richieste), AIMessage(risposta)])
     grafo = costruisci_grafo(
-        modello, strumenti=strumenti, registro=configura_registro(tmp_path / "a.log")
+        modello, strumenti=strumenti, registro=configura_registro(tmp_path / "a.log"),
+        router=RouterFinto(),
     )
     esito = grafo.invoke({"messaggi": [HumanMessage("calcola")], "chiamate_strumento": 0})
     risultati = {m.tool_call_id: m.content for m in esito["messaggi"] if isinstance(m, ToolMessage)}
-    righe = (tmp_path / "a.log").read_text(encoding="utf-8").splitlines()
+    # Solo le righe degli strumenti (il log contiene anche router e agente).
+    righe = [r for r in (tmp_path / "a.log").read_text(encoding="utf-8").splitlines() if " strumento=" in r]
     return esito, risultati, righe
 
 

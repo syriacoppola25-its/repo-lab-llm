@@ -5,7 +5,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 from assistente.grafo import MESSAGGIO_LIMITE, costruisci_grafo
 from assistente.strumenti import crea_orologio
 from assistente.terminale import PENSANDO, PREFISSO_RISPOSTA, SALUTO, esegui_sessione
-from tests.finti import ModelloFinto
+from tests.finti import ModelloFinto, RouterFinto
 
 ISTANTE = datetime(2026, 10, 26, 14, 0, tzinfo=timezone.utc)
 CHIAMATA = {
@@ -48,7 +48,7 @@ def avvia(righe, risposte=(), modello=None, **grafo):
         return riga
 
     esegui_sessione(
-        costruisci_grafo(modello, **grafo),
+        costruisci_grafo(modello, **grafo, router=RouterFinto()),
         leggi=leggi,
         scrivi=lambda testo: uscita.append(testo + "\n"),
         scrivi_pezzo=uscita.append,
@@ -116,7 +116,7 @@ def test_testo_a_pezzi_con_prefisso_una_volta():
     pezzi = []
     righe = iter(["ciao", "esci"])
     esegui_sessione(
-        costruisci_grafo(ModelloFinto([AIMessage("uno due tre")])),
+        costruisci_grafo(ModelloFinto([AIMessage("uno due tre")]), router=RouterFinto()),
         leggi=lambda _prompt: next(righe),
         scrivi=lambda testo: None,
         scrivi_pezzo=pezzi.append,

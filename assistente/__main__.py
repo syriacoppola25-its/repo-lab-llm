@@ -10,6 +10,7 @@ from assistente.grafo import costruisci_grafo
 from assistente.modello import crea_modello, istruzioni_sistema
 from assistente.note_mcp import ClientNote
 from assistente.registro import configura_registro
+from assistente.router import crea_router
 from assistente.strumenti import ErroreCollegamento, crea_orologio
 from assistente.terminale import SALUTO, esegui_sessione
 
@@ -53,6 +54,7 @@ def main() -> int:
             limite=config.limite_chiamate,
             registro=registro,
             conferme={"delete_note": conferma},
+            router=crea_router(config),
         )
         esegui_sessione(grafo)
     finally:

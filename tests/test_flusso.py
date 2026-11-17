@@ -7,7 +7,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 from assistente import flusso
 from assistente.grafo import costruisci_grafo
 from assistente.strumenti import crea_orologio
-from tests.finti import ModelloFinto
+from tests.finti import ModelloFinto, RouterFinto
 
 ISTANTE = datetime(2026, 10, 26, 14, 0, tzinfo=timezone.utc)
 CHIAMATA = {
@@ -20,7 +20,8 @@ CHIAMATA = {
 
 def grafo_con(modello):
     return costruisci_grafo(
-        modello, strumenti=[crea_orologio("Europe/Rome", adesso=lambda: ISTANTE)]
+        modello, strumenti=[crea_orologio("Europe/Rome", adesso=lambda: ISTANTE)],
+        router=RouterFinto(),
     )
 
 
@@ -79,7 +80,7 @@ def test_streaming_vero():
             yield AIMessageChunk("due")
 
     eventi = []
-    for evento in flusso.risposta_in_streaming(costruisci_grafo(ModelloLento()), [HumanMessage("ciao")]):
+    for evento in flusso.risposta_in_streaming(costruisci_grafo(ModelloLento(), router=RouterFinto()), [HumanMessage("ciao")]):
         eventi.append(evento)
         primo_ricevuto.set()
 
@@ -106,6 +107,7 @@ def test_limite_e_un_nuovo_tratto_di_testo():
         ModelloFinto(richieste),
         strumenti=[crea_orologio("Europe/Rome", adesso=lambda: ISTANTE)],
         limite=1,
+        router=RouterFinto(),
     )
 
     eventi = list(flusso.risposta_in_streaming(grafo, [HumanMessage("che ore sono?")]))
