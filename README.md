@@ -363,8 +363,7 @@ Ordine delle prove per ricontrollare tutto da zero (PowerShell, nella cartella d
    `esito=errore_strumento`.
 
 Modello di riferimento: `google/gemma-4-e4b` (indicazione del corso), con cui la prova reale
-passa 13/13 (misurato con il router, prima della regola sugli strumenti); dopo la regola le 4
-prove del router passano 4/4. Il modello più piccolo `google/gemma-4-e2b` passa 7/8: con «Quanto fa 10 diviso 0?»
+passa 14/14 (misurato con il router e la regola sugli strumenti). Il modello più piccolo `google/gemma-4-e2b` passa 7/8: con «Quanto fa 10 diviso 0?»
 spesso risponde a memoria o scrive la chiamata come testo
 (`calculate{expression:<|"|>10 / 0<|"|>}`) invece di chiamare lo strumento; inoltre nomina il
 fuso `Europe/Rome` anche quando non serve.
