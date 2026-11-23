@@ -205,9 +205,14 @@ L'assistente è un **assistente d'ufficio**. Prima dell'agente (modello + strume
 `router` chiede allo stesso modello di LM Studio, senza strumenti, di classificare l'ultima
 domanda con un output strutturato (schema JSON): `categoria` (`conversazione` o
 `fuori_ambito`) e `motivo`. Il router non decide gli strumenti: lo fa l'agente, come prima.
+Il router usa `temperature=0`, così la stessa domanda riceve la stessa categoria; l'agente
+mantiene la temperatura predefinita.
 
 - **In ambito** (`conversazione` → agente): data e ora, note, calcoli, mail, testi, riassunti,
   organizzazione di giornata, riunioni e scadenze, termini di lavoro, saluti e seguiti.
+  Le richieste che usano gli strumenti (note, calcoli, data e ora) sono in ambito
+  **qualunque sia l'argomento**: «Ricordami di comprare il guanciale» salva la nota, anche se
+  le ricette sono fuori ambito.
 - **Fuori ambito** (`fuori_ambito` → rifiuto): sport, gossip, fantasia, consigli medici, ricette
   e tutto ciò che non riguarda il lavoro d'ufficio. La risposta è fissa:
   `Mi dispiace, posso aiutarti solo con il lavoro d'ufficio (mail, testi, organizzazione, note, orari, calcoli).`
@@ -310,7 +315,17 @@ dal router e lega all'agente tutti gli strumenti (orologio, note, calcolatrice):
 - «Scrivimi una breve mail per spostare la riunione di domani alle 15» → router
   `categoria=conversazione`, `prossimo=agente` e `nodo=agente` nel log;
 - «Chi ha vinto l'ultima partita di Serie A?» e «Come si prepara la carbonara?» → router
-  `categoria=fuori_ambito`, messaggio di rifiuto, nessuna riga `nodo=agente`.
+  `categoria=fuori_ambito`, messaggio di rifiuto, nessuna riga `nodo=agente`;
+- «Ricordami di comprare il guanciale» → router `categoria=conversazione` nonostante
+  l'argomento, `add_note` e una nota con «guanciale».
+
+Solo le prove del router (circa 4 minuti):
+
+```powershell
+$env:PROVA_LMSTUDIO = "1"
+python -m pytest tests/test_reale_lmstudio.py -v -k router
+Remove-Item Env:PROVA_LMSTUDIO
+```
 
 Anche le prove di streaming passano dal router, quindi usano domande in ambito.
 
@@ -332,7 +347,7 @@ Ordine delle prove per ricontrollare tutto da zero (PowerShell, nella cartella d
    python -m pytest -v
    ```
 
-   Esito atteso: `No broken requirements found.` e `224 passed, 13 skipped`.
+   Esito atteso: `No broken requirements found.` e `226 passed, 14 skipped`.
 2. LM Studio: elenco dei modelli (sezione «Configurazione»), prova reale con
    `PROVA_LMSTUDIO` (sezione «Test automatici», ripetuta più volte) e conversazione con
    `python -m assistente`: «che ore sono?», «e a Tokyo?», «di che cosa abbiamo parlato?»,
@@ -348,7 +363,8 @@ Ordine delle prove per ricontrollare tutto da zero (PowerShell, nella cartella d
    `esito=errore_strumento`.
 
 Modello di riferimento: `google/gemma-4-e4b` (indicazione del corso), con cui la prova reale
-passa 13/13 (misurato con il router). Il modello più piccolo `google/gemma-4-e2b` passa 7/8: con «Quanto fa 10 diviso 0?»
+passa 13/13 (misurato con il router, prima della regola sugli strumenti); dopo la regola le 4
+prove del router passano 4/4. Il modello più piccolo `google/gemma-4-e2b` passa 7/8: con «Quanto fa 10 diviso 0?»
 spesso risponde a memoria o scrive la chiamata come testo
 (`calculate{expression:<|"|>10 / 0<|"|>}`) invece di chiamare lo strumento; inoltre nomina il
 fuso `Europe/Rome` anche quando non serve.
