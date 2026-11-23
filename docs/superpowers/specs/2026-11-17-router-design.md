@@ -1,7 +1,8 @@
 # Router dell'ambito — specifica
 
 Data: 2026-11-17
-Stato: approvata (2026-11-17)
+Stato: approvata (2026-11-17); aggiornata il 2026-11-23 (precedenza degli strumenti,
+`temperature=0`), aggiornamento approvato il 2026-11-23
 
 Riferimenti: specifiche precedenti `2026-10-26-assistente-laboratorio-design.md`,
 `2026-11-09-note-mcp-design.md`, `2026-11-09-calcolatrice-mcp-design.md` e
@@ -65,6 +66,12 @@ Il router classifica come **`fuori_ambito`** (decisione dell'utente): sport, gos
 contenuti di fantasia, consigli medici, e in generale tutto ciò che non riguarda il lavoro
 d'ufficio. Anche ricette e cucina sono fuori ambito (decisione dell'utente).
 
+**Precedenza degli strumenti** (decisione dell'utente, 2026-11-23, dopo la revisione finale):
+una richiesta che chiede di salvare, elencare o eliminare note, di fare un calcolo o di sapere
+data e ora è **sempre** `conversazione`, qualunque sia l'argomento. Esempi: «Ricordami di
+comprare il guanciale», «Salva una nota: vedere la partita sabato» sono in ambito. Motivo:
+con `gemma-4-e4b` la prima frase era rifiutata in 2 prove su 2 e la seconda una volta su due.
+
 Le istruzioni del router riportano questo elenco, con qualche esempio per categoria (gli esempi
 precisi li sceglie il costruttore). Devono chiedere al modello di classificare **l'ultima
 domanda dell'utente**, usando i messaggi precedenti solo come contesto per capire i seguiti.
@@ -104,6 +111,9 @@ START → router ──conversazione──→ agente ──fine─────�
   con il modello, il ripiego è far scrivere il JSON al modello tramite le istruzioni e leggerlo e
   controllarlo con il nostro codice. **Non** si usa `function_calling`, che collegherebbe al
   router uno strumento nascosto (scelta mia).
+- Il router usa **`temperature=0`** (decisione dell'utente, 2026-11-23): la stessa domanda deve
+  ricevere la stessa classificazione. È una costante nel codice, non una variabile d'ambiente;
+  l'agente mantiene la temperatura di oggi.
 - Il router **non va in streaming**: la sua risposta non compare nel terminale.
 - Il router riceve le istruzioni di sistema e la conversazione della sessione **ridotta ai
   messaggi di testo dell'utente e dell'assistente** (senza chiamate a strumenti né risultati),
@@ -172,7 +182,9 @@ dell'agente non cambiano.
   motivo e passaggio all'agente;
 - una domanda fuori ambito (per esempio il risultato di una partita) → rifiuto e nessuna riga
   dell'agente nel log;
-- una ricetta → fuori ambito.
+- una ricetta → fuori ambito;
+- una nota su un argomento fuori ambito («Ricordami di comprare il guanciale») → in ambito,
+  l'agente salva la nota con `add_note` (aggiunta il 2026-11-23).
 
 La prova reale **verifica** la classificazione (decisione dell'utente): se il modello classifica
 male uno dei casi, il test fallisce e l'incremento non si chiude finché le istruzioni del router
