@@ -1,6 +1,13 @@
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from assistente.router import istruzioni_router, leggi_decisione, messaggi_per_router, risposta_grezza
+from assistente.config import carica_config
+from assistente.router import (
+    istruzioni_router,
+    leggi_decisione,
+    messaggi_per_router,
+    modello_router,
+    risposta_grezza,
+)
 from tests.finti import decisione, illeggibile
 
 
@@ -76,6 +83,17 @@ def test_istruzioni_nominano_categorie_e_ambito():
     testo = istruzioni_router().lower()
     for parola in ("conversazione", "fuori_ambito", "ufficio", "ricette", "sport", "medic"):
         assert parola in testo
+
+
+def test_istruzioni_danno_precedenza_agli_strumenti():
+    testo = istruzioni_router()
+    assert "qualunque sia l'argomento" in testo
+    assert "«Ricordami di comprare il guanciale» → conversazione" in testo
+
+
+def test_router_a_temperatura_zero():
+    config = carica_config({"LMSTUDIO_URL": "http://localhost:1234/v1", "LMSTUDIO_MODELLO": "prova"})
+    assert modello_router(config).temperature == 0
 
 
 def test_risposta_grezza_dal_modello():

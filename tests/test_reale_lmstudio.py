@@ -237,3 +237,13 @@ def test_reale_router_ricetta_fuori_ambito(config, tmp_path, client, calcolatric
 
     assert "categoria=fuori_ambito" in log and "nodo=agente" not in log
     assert risposta == MESSAGGIO_RIFIUTO
+
+
+def test_reale_router_nota_fuori_tema(config, tmp_path, client, calcolatrice):
+    chiamati, _ = chiedi(config, tmp_path, client, calcolatrice, "Ricordami di comprare il guanciale")
+
+    log = (tmp_path / "assistente.log").read_text(encoding="utf-8")
+    assert "categoria=conversazione" in log and "prossimo=agente" in log
+    assert "add_note" in chiamati
+    salvate = note(client)
+    assert len(salvate) == 1 and "guanciale" in salvate[0].lower()

@@ -49,10 +49,15 @@ def istruzioni_router() -> str:
         "conversazione già in ambito.\n"
         "- fuori_ambito: sport, gossip, storie o contenuti di fantasia, consigli medici, "
         "ricette e cucina, e tutto ciò che non riguarda il lavoro d'ufficio.\n"
+        "Regola che vale prima delle altre: se l'utente chiede di salvare, elencare o "
+        "eliminare note, di fare un calcolo o di sapere data e ora, la categoria è "
+        "conversazione qualunque sia l'argomento (anche sport o cucina).\n"
         "Esempi:\n"
         "- «Scrivimi una mail per spostare la riunione» → conversazione\n"
         "- «Che ore sono a New York?» → conversazione\n"
         "- «Quanto fa il 15% di 240?» → conversazione\n"
+        "- «Ricordami di comprare il guanciale» → conversazione\n"
+        "- «Salva una nota: vedere la partita sabato» → conversazione\n"
         "- «Chi ha vinto la partita ieri?» → fuori_ambito\n"
         "- «Come si prepara la carbonara?» → fuori_ambito\n"
         "- «Ho mal di testa, che medicina prendo?» → fuori_ambito\n"
@@ -106,7 +111,15 @@ def risposta_grezza(uscita: dict) -> str:
     return grezzo.content if isinstance(grezzo.content, str) else str(grezzo.content)
 
 
+def modello_router(config: Config) -> ChatOpenAI:
+    """Lo stesso modello di LM Studio, a temperatura 0: stessa domanda, stessa categoria."""
+    return ChatOpenAI(
+        base_url=config.url_server, model=config.modello, api_key="lm-studio", temperature=0
+    )
+
+
 def crea_router(config: Config) -> Runnable:
     """Il router: stesso modello di LM Studio, senza strumenti, con output strutturato."""
-    modello = ChatOpenAI(base_url=config.url_server, model=config.modello, api_key="lm-studio")
-    return modello.with_structured_output(SCHEMA_DECISIONE, method="json_schema", include_raw=True)
+    return modello_router(config).with_structured_output(
+        SCHEMA_DECISIONE, method="json_schema", include_raw=True
+    )
